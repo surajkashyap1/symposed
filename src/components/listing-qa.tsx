@@ -4,6 +4,7 @@ import { QUESTION_WORD_LIMIT } from "@/lib/listing-meta";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { WordLimitedField } from "@/components/word-limited-field";
+import { ReportContent } from "@/components/report-content";
 
 export function ListingQA({
   projectId,
@@ -24,7 +25,12 @@ export function ListingQA({
         Questions {questions.length > 0 && `(${questions.length})`}
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Public questions and answers about this listing.
+        Public questions and answers about this listing. Don&apos;t include
+        personal, contact or patient information — see our{" "}
+        <a href="/acceptable-use" className="underline" target="_blank">
+          Acceptable Use Policy
+        </a>
+        .
       </p>
 
       {questions.length === 0 ? (
@@ -39,6 +45,16 @@ export function ListingQA({
               <p className="mt-1 text-xs text-muted-foreground">
                 Asked by {q.askerName ?? "a member"}
               </p>
+
+              {isSignedIn && (
+                <div className="mt-2">
+                  <ReportContent
+                    targetType="question"
+                    targetId={q.id}
+                    backTo={`/projects/${projectId}`}
+                  />
+                </div>
+              )}
 
               {q.answer ? (
                 <div className="mt-3 border-l-2 border-primary pl-3">

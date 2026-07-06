@@ -30,11 +30,11 @@ export default function EthosPage() {
         completing.
       </p>
       <p>
-        For this reason we initially limit applications to <strong>3 per rolling
-        7 days</strong>. This prevents high volumes of low-quality applications and
-        ghosting. It will likely change in future based on how users feel. If you
-        post a research opportunity with a validated supervisor, you can earn extra
-        applications.
+        For this reason we limit how many applications you can send in a rolling
+        period (the current limit is shown when you apply). This prevents high
+        volumes of low-quality applications and ghosting, and may change over time
+        based on how users feel. If you post a research opportunity with a
+        validated supervisor, you can earn extra applications.
       </p>
 
       <h2>Reviews and reputation</h2>

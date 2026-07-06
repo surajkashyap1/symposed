@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { applications, projects } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { isUuid } from "@/lib/utils";
+import { detectPatientIdentifiers } from "@/lib/sensitive-info";
 import { notify } from "@/lib/notify";
 import { validateApplication, STATUS_LABELS, type ApplicationStatus } from "@/lib/application-meta";
 import { parseHoursPerWeek } from "@/lib/profile";
@@ -51,6 +52,19 @@ export async function submitApplication(formData: FormData) {
 
   const validationError = validateApplication(input);
   if (validationError) redirectWith(projectId, validationError);
+
+  // Applications are private, so sharing your own contact details is fine —
+  // but patient identifiers are never allowed anywhere (Acceptable Use §3).
+  const patientFindings = detectPatientIdentifiers(
+    [input.motivation, input.suitability, input.skillsSummary].join("\n")
+  );
+  if (patientFindings.length > 0)
+    redirectWith(
+      projectId,
+      `Your application appears to contain ${patientFindings.join(
+        " and "
+      )}. Patient-identifiable information isn't allowed on Symposed.`
+    );
 
   // Rate limit: 3 / rolling 7 days (+bonus). Enforced server-side.
   const allowance = await getApplicationAllowance(user.id);

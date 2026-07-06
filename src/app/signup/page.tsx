@@ -75,6 +75,35 @@ export default async function SignupPage({
                 autoComplete="new-password"
               />
             </div>
+            <label className="flex items-start gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                name="confirmAge"
+                required
+                className="mt-0.5 size-4 shrink-0 rounded border-input accent-primary"
+              />
+              <span>I am 18 or over.</span>
+            </label>
+            <label className="flex items-start gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                name="acceptTerms"
+                required
+                className="mt-0.5 size-4 shrink-0 rounded border-input accent-primary"
+              />
+              <span>
+                I accept the{" "}
+                <Link href="/terms" className="underline" target="_blank">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="/privacy" className="underline" target="_blank">
+                  Privacy Notice
+                </Link>
+                , and I will not upload patient-identifiable, confidential
+                clinical or other confidential NHS/university information.
+              </span>
+            </label>
             <Button type="submit" className="mt-2 w-full">
               Create account
             </Button>

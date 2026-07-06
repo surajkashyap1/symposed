@@ -10,6 +10,7 @@ import { isUuid } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import { countWords } from "@/lib/profile";
 import { QUESTION_WORD_LIMIT } from "@/lib/listing-meta";
+import { detectSensitiveInfo, sensitiveInfoMessage } from "@/lib/sensitive-info";
 
 const MAX_ANSWER_CHARS = 1000;
 
@@ -27,6 +28,10 @@ export async function askQuestion(formData: FormData) {
   if (!question) backTo(projectId, "Question can't be empty.");
   if (countWords(question) > QUESTION_WORD_LIMIT)
     backTo(projectId, `Keep questions to ${QUESTION_WORD_LIMIT} words or fewer.`);
+  // Q&A is public content — no contact details or patient identifiers.
+  const questionFindings = detectSensitiveInfo(question);
+  if (questionFindings.length > 0)
+    backTo(projectId, sensitiveInfoMessage(questionFindings));
 
   const [project] = await db
     .select({ id: projects.id, status: projects.status, ownerId: projects.ownerId, title: projects.title })
@@ -66,6 +71,10 @@ export async function answerQuestion(formData: FormData) {
   if (!answer) backTo(projectId, "Answer can't be empty.");
   if (answer.length > MAX_ANSWER_CHARS)
     backTo(projectId, `Keep answers under ${MAX_ANSWER_CHARS} characters.`);
+  // Q&A is public content — no contact details or patient identifiers.
+  const answerFindings = detectSensitiveInfo(answer);
+  if (answerFindings.length > 0)
+    backTo(projectId, sensitiveInfoMessage(answerFindings));
 
   // Confirm ownership of the project this question belongs to.
   const [owned] = await db

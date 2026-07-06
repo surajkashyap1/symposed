@@ -292,3 +292,37 @@ export const appErrors = pgTable("app_errors", {
   routeType: text("route_type"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("app_errors_created_idx").on(t.createdAt)]);
+
+// ------------------------ TRUST & SAFETY -----------------------------
+
+export const reportTargetType = pgEnum("report_target_type", [
+  "project", "question", "profile", "review",
+]);
+
+export const reportStatus = pgEnum("report_status", [
+  "open", "actioned", "dismissed",
+]);
+
+// User reports about content or conduct (abuse, data protection, spam...).
+// Reviewed on /admin, which can also unpublish/remove the target.
+export const reports = pgTable("reports", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  reporterId: uuid("reporter_id").notNull().references(() => profiles.id, { onDelete: "cascade" }),
+  targetType: reportTargetType("target_type").notNull(),
+  targetId: uuid("target_id").notNull(),
+  reason: text("reason").notNull(),
+  status: reportStatus("status").notNull().default("open"),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("reports_status_idx").on(t.status, t.createdAt)]);
+
+// Contact-form submissions (feedback, complaints, data protection requests).
+// senderId is null for logged-out visitors.
+export const contactMessages = pgTable("contact_messages", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  senderId: uuid("sender_id").references(() => profiles.id, { onDelete: "set null" }),
+  email: text("email"),
+  topic: text("topic").notNull(),
+  message: text("message").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

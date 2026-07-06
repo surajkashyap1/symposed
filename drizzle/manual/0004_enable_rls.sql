@@ -10,6 +10,7 @@
 
 alter table public.app_errors enable row level security;
 alter table public.applications enable row level security;
+alter table public.contact_messages enable row level security;
 alter table public.badges enable row level security;
 alter table public.conversation_participants enable row level security;
 alter table public.conversations enable row level security;
@@ -21,6 +22,7 @@ alter table public.profile_skills enable row level security;
 alter table public.profiles enable row level security;
 alter table public.projects enable row level security;
 alter table public.publications enable row level security;
+alter table public.reports enable row level security;
 alter table public.reviews enable row level security;
 alter table public.saved_projects enable row level security;
 alter table public.skills enable row level security;

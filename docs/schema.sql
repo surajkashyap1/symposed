@@ -282,6 +282,35 @@ create table saved_projects (
   primary key (profile_id, project_id)
 );
 
+-- ----------------------- TRUST & SAFETY ------------------------------
+
+create type report_target_type as enum ('project','question','profile','review');
+create type report_status as enum ('open','actioned','dismissed');
+
+-- User reports about content or conduct; reviewed on /admin.
+create table reports (
+  id           uuid primary key default gen_random_uuid(),
+  reporter_id  uuid not null references profiles(id) on delete cascade,
+  target_type  report_target_type not null,
+  target_id    uuid not null,
+  reason       text not null,
+  status       report_status not null default 'open',
+  resolved_at  timestamptz,
+  created_at   timestamptz not null default now()
+);
+
+create index reports_status_idx on reports (status, created_at);
+
+-- Contact-form submissions (feedback, complaints, data protection requests).
+create table contact_messages (
+  id          uuid primary key default gen_random_uuid(),
+  sender_id   uuid references profiles(id) on delete set null,
+  email       text,
+  topic       text not null,
+  message     text not null,
+  created_at  timestamptz not null default now()
+);
+
 -- --------------------- ERROR MONITORING ------------------------------
 
 -- Unhandled server errors captured by instrumentation.onRequestError,

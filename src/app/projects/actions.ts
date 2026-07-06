@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { projects } from "@/db/schema";
 import { requireUser, requirePoster } from "@/lib/auth";
 import { isUuid } from "@/lib/utils";
+import { detectSensitiveInfo, sensitiveInfoMessage } from "@/lib/sensitive-info";
 import { awardBadge } from "@/lib/badges";
 import {
   PROJECT_TYPE_VALUES,
@@ -52,6 +53,30 @@ function parseProjectForm(formData: FormData) {
   };
 }
 
+// Listings are public: block contact details and patient identifiers
+// (Acceptable Use Policy §3, Contact Sharing Policy §1). The confirmation
+// checkbox is also enforced here, not just in the form markup.
+function checkListingSubmission(
+  formData: FormData,
+  data: ReturnType<typeof parseProjectForm>,
+  backTo: string
+) {
+  if (formData.get("noConfidentialInfo") !== "on") {
+    redirect(
+      `${backTo}?error=${encodeURIComponent(
+        "Please confirm your listing contains no confidential or patient information."
+      )}`
+    );
+  }
+  const publicText = [data.title, data.description, data.specialty, data.roleCategory]
+    .filter(Boolean)
+    .join("\n");
+  const findings = detectSensitiveInfo(publicText);
+  if (findings.length > 0) {
+    redirect(`${backTo}?error=${encodeURIComponent(sensitiveInfoMessage(findings))}`);
+  }
+}
+
 export async function createProject(formData: FormData) {
   const { user } = await requirePoster();
   const data = parseProjectForm(formData);
@@ -60,6 +85,7 @@ export async function createProject(formData: FormData) {
   if (!data.title || !data.description) {
     redirect("/projects/new?error=Title+and+description+are+required");
   }
+  checkListingSubmission(formData, data, "/projects/new");
 
   const [created] = await db
     .insert(projects)
@@ -85,6 +111,7 @@ export async function updateProject(formData: FormData) {
   if (!id || !data.title || !data.description) {
     redirect(`/projects/${id}/edit?error=Title+and+description+are+required`);
   }
+  checkListingSubmission(formData, data, `/projects/${id}/edit`);
 
   // Owner guard: the where clause only matches if this user owns the project.
   await db

@@ -29,6 +29,7 @@ import { CAREER_STAGES } from "@/lib/profile";
 import { formatDateUK } from "@/lib/utils";
 import { ApplicationForm } from "@/components/application-form";
 import { ListingQA } from "@/components/listing-qa";
+import { ReportContent } from "@/components/report-content";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -79,10 +80,10 @@ export default async function ProjectDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; applied?: string }>;
+  searchParams: Promise<{ error?: string; applied?: string; reported?: string }>;
 }) {
   const { id } = await params;
-  const { error, applied } = await searchParams;
+  const { error, applied, reported } = await searchParams;
   const project = await getProjectById(id);
   if (!project) notFound();
 
@@ -111,6 +112,11 @@ export default async function ProjectDetailPage({
       {error && (
         <div className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
+        </div>
+      )}
+      {reported && (
+        <div className="mt-4 rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
+          Thanks — your report has been received and will be reviewed.
         </div>
       )}
       {applied && (
@@ -324,6 +330,17 @@ export default async function ProjectDetailPage({
         isSignedIn={!!user}
         isOpen={project.status === "open"}
       />
+
+      {user && !isOwner && (
+        <div className="mt-10">
+          <ReportContent
+            targetType="project"
+            targetId={project.id}
+            backTo={`/projects/${project.id}`}
+            label="Report this listing"
+          />
+        </div>
+      )}
     </main>
   );
 }

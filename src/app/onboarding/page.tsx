@@ -319,7 +319,7 @@ export default async function OnboardingPage({
               <p className="text-xs text-muted-foreground">
                 Have a different staff email?{" "}
                 <a
-                  href="mailto:hello@symposed.org?subject=Verify%20my%20account"
+                  href="/contact"
                   className="text-primary underline"
                 >
                   Contact us

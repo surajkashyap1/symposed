@@ -11,6 +11,7 @@ import { CAREER_STAGES } from "@/lib/profile";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ReportContent } from "@/components/report-content";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -253,6 +254,17 @@ export default async function PublicProfilePage({
           </ul>
         )}
       </section>
+
+      {viewer && viewer.id !== profile.id && (
+        <div className="mt-10">
+          <ReportContent
+            targetType="profile"
+            targetId={profile.id}
+            backTo={`/profile/${profile.id}`}
+            label="Report this profile"
+          />
+        </div>
+      )}
     </main>
   );
 }

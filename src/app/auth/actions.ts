@@ -11,6 +11,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { ensureProfile, requireUser } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
 import { sendLoginEmailConfirmation } from "@/lib/confirm-email";
+import { detectSensitiveInfo, sensitiveInfoMessage } from "@/lib/sensitive-info";
 import {
   computeCompleteness,
   countWords,
@@ -44,6 +45,16 @@ export async function signup(formData: FormData) {
   const password = String(formData.get("password") ?? "");
   const fullName = String(formData.get("fullName") ?? "").trim();
 
+  // Launch-critical confirmations (policy pack A1): 18+ and terms/no-patient-
+  // data acceptance, recorded on the auth user with a timestamp.
+  if (formData.get("confirmAge") !== "on" || formData.get("acceptTerms") !== "on") {
+    redirect(
+      `/signup?error=${encodeURIComponent(
+        "Please confirm you are 18 or over and accept the terms."
+      )}`
+    );
+  }
+
   const existingProfile = await db
     .select({ id: profiles.id })
     .from(profiles)
@@ -63,7 +74,11 @@ export async function signup(formData: FormData) {
     email,
     password,
     options: {
-      data: { full_name: fullName },
+      data: {
+        full_name: fullName,
+        terms_accepted_at: new Date().toISOString(),
+        age_confirmed: true,
+      },
       emailRedirectTo: `${origin}/auth/confirm?next=/onboarding`,
     },
   });
@@ -201,6 +216,20 @@ export async function updateProfile(formData: FormData) {
       `/onboarding?error=${encodeURIComponent(
         `About you must be ${SUMMARY_WORD_LIMIT} words or fewer.`
       )}`
+    );
+
+  // Profiles are public: contact details go through private channels, never
+  // profile text (Contact Sharing Policy §1).
+  const publicProfileText = [
+    specialtyRaw,
+    summaryRaw,
+    String(formData.get("university") ?? ""),
+    String(formData.get("careerStageOther") ?? ""),
+  ].join("\n");
+  const profileFindings = detectSensitiveInfo(publicProfileText);
+  if (profileFindings.length > 0)
+    redirect(
+      `/onboarding?error=${encodeURIComponent(sensitiveInfoMessage(profileFindings))}`
     );
 
   const stageRaw = String(formData.get("careerStage") ?? "other");

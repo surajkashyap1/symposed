@@ -2,9 +2,12 @@ import Link from "next/link";
 
 const LINKS = [
   { href: "/about", label: "About" },
-  { href: "/ethos", label: "Ethos & usage" },
+  { href: "/guide", label: "How it works" },
+  { href: "/contact", label: "Contact" },
   { href: "/privacy", label: "Privacy" },
   { href: "/terms", label: "Terms" },
+  { href: "/cookies", label: "Cookies" },
+  { href: "/policies", label: "All policies" },
 ];
 
 export function SiteFooter() {

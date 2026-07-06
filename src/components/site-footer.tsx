@@ -13,7 +13,7 @@ export function SiteFooter() {
       <div className="mx-auto flex w-full max-w-5xl flex-col items-center justify-between gap-3 px-6 py-6 text-sm text-muted-foreground sm:flex-row">
         <p>
           <span className="font-heading font-semibold text-foreground">
-            Bylined
+            Symposed
           </span>{" "}
           · Bringing research to you.
         </p>

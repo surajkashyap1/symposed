@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
-const STORAGE_KEY = "bylined.cookie-consent";
+const STORAGE_KEY = "symposed.cookie-consent";
 
 // We currently set only essential cookies (authentication). This is an
 // informational notice with acknowledgement, stored locally so it shows once.

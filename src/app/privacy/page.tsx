@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import { Prose } from "@/components/prose";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | Bylined",
-  description: "How Bylined collects, uses, and protects your personal data.",
+  title: "Privacy Policy | Symposed",
+  description: "How Symposed collects, uses, and protects your personal data.",
 };
 
 export default function PrivacyPage() {
   return (
     <Prose title="Privacy Policy" updated="June 2026">
       <p>
-        Bylined (&ldquo;we&rdquo;) is a UK-based platform connecting students and
+        Symposed (&ldquo;we&rdquo;) is a UK-based platform connecting students and
         healthcare professionals with research opportunities. This policy explains
         what personal data we process and why, under the UK GDPR and the Data
         Protection Act 2018. We are the data controller for the information

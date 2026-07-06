@@ -42,7 +42,7 @@ export async function requestVerification(formData: FormData) {
 
   const sent = await sendEmail({
     to: email,
-    subject: "Verify your account on Bylined",
+    subject: "Verify your account on Symposed",
     text: `Confirm this email to verify your account:\n\n${link}\n\nThis link expires in 24 hours. If you didn't request it, ignore this email.`,
   });
 

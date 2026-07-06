@@ -2,19 +2,19 @@ import type { Metadata } from "next";
 import { Prose } from "@/components/prose";
 
 export const metadata: Metadata = {
-  title: "Ethos and Usage Policy | Bylined",
+  title: "Ethos and Usage Policy | Symposed",
   description:
-    "How we build trust, prevent spam, and keep Bylined welcoming to beginners.",
+    "How we build trust, prevent spam, and keep Symposed welcoming to beginners.",
 };
 
 export default function EthosPage() {
   return (
     <Prose
       title="Ethos & usage policy"
-      intro="The principles that keep Bylined fair, trustworthy and welcoming."
+      intro="The principles that keep Symposed fair, trustworthy and welcoming."
     >
       <p>
-        This platform is free to use for everyone. By using Bylined you agree to
+        This platform is free to use for everyone. By using Symposed you agree to
         take part in good faith. Apply to projects you genuinely intend to
         complete, communicate honestly, and treat collaborators and supervisors
         with respect.

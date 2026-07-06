@@ -21,7 +21,7 @@ const serif = Newsreader({
 });
 
 export const metadata: Metadata = {
-  title: "Bylined: find research opportunities",
+  title: "Symposed: find research opportunities",
   description:
     "A UK platform connecting students and healthcare professionals with research opportunities, collaborators, and supervisors.",
 };

@@ -18,7 +18,7 @@ export async function SiteHeader() {
           href="/"
           className="shrink-0 font-heading text-xl font-semibold tracking-tight text-foreground transition-opacity hover:opacity-70"
         >
-          Bylined
+          Symposed
         </Link>
         <nav className="flex items-center gap-1.5 overflow-x-auto overflow-y-hidden py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
           <Link

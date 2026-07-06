@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
 import { projectTypeLabel, experienceLabel } from "@/lib/project-meta";
+import { formatDateUK } from "@/lib/utils";
 import { CAREER_STAGES } from "@/lib/profile";
 import type { ProjectListItem } from "@/lib/queries/projects";
 import { Badge } from "@/components/ui/badge";
@@ -66,10 +67,14 @@ export function ProjectCard({ p }: { p: ProjectListItem }) {
   return (
     <Link
       href={`/projects/${p.id}`}
+      // A page of cards: viewport-prefetching every dynamic card re-fetches
+      // endlessly (dynamic prefetches expire immediately) and starves real
+      // navigations like the pagination links.
+      prefetch={false}
       className="block rounded-lg border bg-card p-5 transition-colors hover:border-primary/40 hover:bg-accent/40"
     >
       <div className="flex items-start justify-between gap-3">
-        <h3 className="font-semibold leading-snug text-card-foreground">
+        <h3 className="min-w-0 break-words font-semibold leading-snug text-card-foreground">
           {p.title}
         </h3>
         {p.isBeginnerFriendly && (
@@ -124,7 +129,7 @@ export function ProjectCard({ p }: { p: ProjectListItem }) {
         {p.applicationDeadline && (
           <InfoPill
             icon={CalendarDays}
-            label={`Apply by ${p.applicationDeadline}`}
+            label={`Apply by ${formatDateUK(p.applicationDeadline)}`}
             className="border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300"
           />
         )}

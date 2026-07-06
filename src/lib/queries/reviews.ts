@@ -134,6 +134,10 @@ export type ProfileReview = {
   isAnonymous: boolean;
 };
 
+// Newest reviews shown on a profile; the rating summary covers the full
+// history, so the page stays bounded however many reviews someone earns.
+const PROFILE_REVIEWS_LIMIT = 30;
+
 export async function getReviewsForProfile(
   profileId: string
 ): Promise<ProfileReview[]> {
@@ -152,7 +156,8 @@ export async function getReviewsForProfile(
     .leftJoin(projects, eq(projects.id, reviews.projectId))
     .leftJoin(profiles, eq(profiles.id, reviews.reviewerId))
     .where(eq(reviews.revieweeId, profileId))
-    .orderBy(desc(reviews.createdAt));
+    .orderBy(desc(reviews.createdAt))
+    .limit(PROFILE_REVIEWS_LIMIT);
 
   // Honour anonymous reviews by stripping the reviewer's name.
   return rows.map((r) => ({

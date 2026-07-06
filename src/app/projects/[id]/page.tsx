@@ -26,6 +26,7 @@ import { closeProject, reopenProject, completeProject } from "@/app/projects/act
 import { projectTypeLabel, experienceLabel } from "@/lib/project-meta";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "@/lib/application-meta";
 import { CAREER_STAGES } from "@/lib/profile";
+import { formatDateUK } from "@/lib/utils";
 import { ApplicationForm } from "@/components/application-form";
 import { ListingQA } from "@/components/listing-qa";
 import { Badge } from "@/components/ui/badge";
@@ -87,6 +88,8 @@ export default async function ProjectDetailPage({
 
   const user = await getSessionUser();
   const isOwner = user?.id === project.ownerId;
+  // Drafts are not public listings — only the owner can view them.
+  if (project.status === "draft" && !isOwner) notFound();
   const ProjectTypeIcon = TYPE_ICONS[project.projectType] ?? HelpCircle;
   const ownerRole = careerStageLabel(project.ownerCareerStage);
 
@@ -121,7 +124,9 @@ export default async function ProjectDetailPage({
       )}
 
       <div className="mt-4 flex items-start justify-between gap-4">
-        <h1 className="text-2xl font-semibold tracking-tight">{project.title}</h1>
+        <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight">
+          {project.title}
+        </h1>
         {project.status !== "open" && (
           <Badge variant="secondary" className="shrink-0 capitalize">
             {project.status.replace("_", " ")}
@@ -187,8 +192,12 @@ export default async function ProjectDetailPage({
           />
           <DetailField
             icon={CalendarDays}
-            label="Application Deadline"
-            value={project.applicationDeadline ?? "Not set"}
+            label="Application deadline"
+            value={
+              project.applicationDeadline
+                ? formatDateUK(project.applicationDeadline)
+                : "Not set"
+            }
             className="border-rose-200 bg-rose-50 dark:border-rose-900/60 dark:bg-rose-950/40"
           />
           <DetailField

@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { listingQuestions, projects } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { isUuid } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import { countWords } from "@/lib/profile";
 import { QUESTION_WORD_LIMIT } from "@/lib/listing-meta";
@@ -22,7 +23,7 @@ export async function askQuestion(formData: FormData) {
   const user = await requireUser();
   const projectId = String(formData.get("projectId") ?? "");
   const question = String(formData.get("question") ?? "").trim();
-  if (!projectId) redirect("/projects");
+  if (!isUuid(projectId)) redirect("/projects");
   if (!question) backTo(projectId, "Question can't be empty.");
   if (countWords(question) > QUESTION_WORD_LIMIT)
     backTo(projectId, `Keep questions to ${QUESTION_WORD_LIMIT} words or fewer.`);
@@ -61,6 +62,7 @@ export async function answerQuestion(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const projectId = String(formData.get("projectId") ?? "");
   const answer = String(formData.get("answer") ?? "").trim();
+  if (!isUuid(id) || !isUuid(projectId)) redirect("/projects");
   if (!answer) backTo(projectId, "Answer can't be empty.");
   if (answer.length > MAX_ANSWER_CHARS)
     backTo(projectId, `Keep answers under ${MAX_ANSWER_CHARS} characters.`);

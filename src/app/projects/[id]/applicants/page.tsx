@@ -127,6 +127,9 @@ export default async function ApplicantsPage({
                         <p className="font-medium">
                           <Link
                             href={`/profile/${a.applicantId}`}
+                            // One per applicant: avoid the dynamic-prefetch
+                            // churn that starves the accept/reject refresh.
+                            prefetch={false}
                             className="hover:underline"
                           >
                             {a.applicantName ?? "Member"}

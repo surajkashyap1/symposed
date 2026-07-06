@@ -6,6 +6,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import { notifications } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { isUuid } from "@/lib/utils";
 
 // Mark a single notification read when the user opens it, then follow its link.
 // Scoped to the current user so you can't clear someone else's notification.
@@ -14,7 +15,7 @@ export async function markNotificationRead(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const link = String(formData.get("link") ?? "");
 
-  if (id) {
+  if (isUuid(id)) {
     await db
       .update(notifications)
       .set({ readAt: new Date() })
@@ -30,7 +31,10 @@ export async function markNotificationRead(formData: FormData) {
     revalidatePath("/", "layout");
   }
 
-  if (link) redirect(link);
+  // The link round-trips through the form, so treat it as untrusted: follow
+  // internal paths only ("//host" is a protocol-relative external URL).
+  if (link.startsWith("/") && !link.startsWith("//")) redirect(link);
+  redirect("/notifications");
 }
 
 export async function markAllNotificationsRead() {

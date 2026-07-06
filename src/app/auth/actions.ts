@@ -32,7 +32,8 @@ export async function login(formData: FormData) {
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
   }
   revalidatePath("/", "layout");
-  redirect(next.startsWith("/") ? next : "/dashboard");
+  // Internal paths only: "//evil.com" is a protocol-relative external URL.
+  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
 }
 
 export async function signup(formData: FormData) {

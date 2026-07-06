@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { getSessionUser, getProfile } from "@/lib/auth";
 import {
   listOpenProjects,
@@ -24,6 +24,7 @@ type SP = {
   type?: string;
   experience?: string;
   rank?: string;
+  page?: string;
 };
 
 const COMPETITIVENESS_RANKS: {
@@ -54,8 +55,29 @@ export default async function ProjectsPage({
     : undefined;
   const q = sp.q?.trim() || undefined;
   const specialty = sp.specialty?.trim() || undefined;
+  const requestedPage = Number.parseInt(sp.page ?? "1", 10) || 1;
 
-  const projects = await listOpenProjects({ q, specialty, type, experience, rank });
+  const { items: projects, total, page, pageCount } = await listOpenProjects({
+    q,
+    specialty,
+    type,
+    experience,
+    rank,
+    page: requestedPage,
+  });
+
+  // Link to another page keeping the current filters.
+  const pageHref = (p: number) => {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (specialty) params.set("specialty", specialty);
+    if (type) params.set("type", type);
+    if (experience) params.set("experience", experience);
+    if (rank !== "beginner_first") params.set("rank", rank);
+    if (p > 1) params.set("page", String(p));
+    const qs = params.toString();
+    return qs ? `/projects?${qs}` : "/projects";
+  };
 
   return (
     <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-10">
@@ -63,7 +85,8 @@ export default async function ProjectsPage({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Research projects</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Browse open opportunities. {projects.length} shown.
+            Browse open opportunities. {total} open{" "}
+            {total === 1 ? "project" : "projects"}.
           </p>
         </div>
         {canPost && (
@@ -115,6 +138,49 @@ export default async function ProjectsPage({
             <ProjectCard key={p.id} p={p} />
           ))}
         </div>
+      )}
+
+      {pageCount > 1 && (
+        <nav
+          aria-label="Pagination"
+          className="mt-10 flex items-center justify-center gap-3"
+        >
+          {page > 1 ? (
+            <Link
+              href={pageHref(page - 1)}
+              prefetch={false}
+              rel="prev"
+              className={buttonVariants({ variant: "outline", className: "gap-1" })}
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+              Previous
+            </Link>
+          ) : (
+            <span className={buttonVariants({ variant: "outline", className: "gap-1 pointer-events-none opacity-50" })}>
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+              Previous
+            </span>
+          )}
+          <span className="text-sm text-muted-foreground">
+            Page {page} of {pageCount}
+          </span>
+          {page < pageCount ? (
+            <Link
+              href={pageHref(page + 1)}
+              prefetch={false}
+              rel="next"
+              className={buttonVariants({ variant: "outline", className: "gap-1" })}
+            >
+              Next
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            </Link>
+          ) : (
+            <span className={buttonVariants({ variant: "outline", className: "gap-1 pointer-events-none opacity-50" })}>
+              Next
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            </span>
+          )}
+        </nav>
       )}
     </main>
   );

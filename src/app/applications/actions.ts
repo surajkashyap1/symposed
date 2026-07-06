@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { applications, projects } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { isUuid } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import { validateApplication, STATUS_LABELS, type ApplicationStatus } from "@/lib/application-meta";
 import { parseHoursPerWeek } from "@/lib/profile";
@@ -18,7 +19,7 @@ function redirectWith(projectId: string, error: string): never {
 export async function submitApplication(formData: FormData) {
   const user = await requireUser();
   const projectId = String(formData.get("projectId") ?? "");
-  if (!projectId) redirect("/projects");
+  if (!isUuid(projectId)) redirect("/projects");
 
   const input = {
     motivation: String(formData.get("motivation") ?? "").trim(),
@@ -94,6 +95,7 @@ export async function submitApplication(formData: FormData) {
 export async function withdrawApplication(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get("id") ?? "");
+  if (!isUuid(id)) redirect("/applications");
 
   // Owner guard via where clause; only the applicant can withdraw.
   await db
@@ -115,6 +117,7 @@ export async function setApplicationStatus(formData: FormData) {
   const projectId = String(formData.get("projectId") ?? "");
   const status = String(formData.get("status") ?? "") as ApplicationStatus;
 
+  if (!isUuid(id) || !isUuid(projectId)) redirect("/dashboard");
   if (!LISTER_STATUSES.includes(status)) redirect(`/projects/${projectId}/applicants`);
 
   // Confirm the current user owns the project this application belongs to.

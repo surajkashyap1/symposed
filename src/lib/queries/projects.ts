@@ -60,11 +60,21 @@ export type ListProjectsOptions = {
   type?: ProjectType;
   experience?: ExperienceLevel;
   rank?: CompetitivenessRank;
+  page?: number;
+};
+
+export const PROJECTS_PAGE_SIZE = 6;
+
+export type ProjectListPage = {
+  items: ProjectListItem[];
+  total: number;
+  page: number;
+  pageCount: number;
 };
 
 export async function listOpenProjects(
   opts: ListProjectsOptions
-): Promise<ProjectListItem[]> {
+): Promise<ProjectListPage> {
   const conds = [eq(projects.status, "open")];
 
   if (opts.q) {
@@ -88,13 +98,27 @@ export async function listOpenProjects(
       ? desc(competitiveRank)
       : desc(beginnerRank);
 
-  return db
+  // Count first so an out-of-range ?page= clamps to the last real page
+  // instead of rendering an empty grid.
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(projects)
+    .where(and(...conds));
+
+  const pageCount = Math.max(1, Math.ceil(total / PROJECTS_PAGE_SIZE));
+  const page = Math.min(Math.max(1, Math.floor(opts.page ?? 1)), pageCount);
+
+  const items = await db
     .select(listColumns)
     .from(projects)
     .leftJoin(profiles, eq(profiles.id, projects.ownerId))
     // Beginner-friendly listings get higher visibility (ROADMAP §9/§11).
     .where(and(...conds))
-    .orderBy(rankOrder, desc(projects.createdAt));
+    .orderBy(rankOrder, desc(projects.createdAt), desc(projects.id))
+    .limit(PROJECTS_PAGE_SIZE)
+    .offset((page - 1) * PROJECTS_PAGE_SIZE);
+
+  return { items, total, page, pageCount };
 }
 
 const UUID_RE =

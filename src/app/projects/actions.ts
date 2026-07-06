@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { projects } from "@/db/schema";
 import { requireUser, requirePoster } from "@/lib/auth";
+import { isUuid } from "@/lib/utils";
 import { awardBadge } from "@/lib/badges";
 import {
   PROJECT_TYPE_VALUES,
@@ -25,7 +26,10 @@ function parseProjectForm(formData: FormData) {
     EXPERIENCE_VALUES.has(expRaw as ExperienceLevel) ? expRaw : "beginner_welcome"
   ) as ExperienceLevel;
 
-  const deadline = String(formData.get("applicationDeadline") ?? "").trim();
+  // Only accept a real yyyy-mm-dd value — anything else would fail the
+  // Postgres date cast with a 500 instead of a form error.
+  const deadlineRaw = String(formData.get("applicationDeadline") ?? "").trim();
+  const deadline = /^\d{4}-\d{2}-\d{2}$/.test(deadlineRaw) ? deadlineRaw : null;
   const positions = parseInt(
     String(formData.get("positionsAvailable") ?? "1"),
     10
@@ -41,8 +45,10 @@ function parseProjectForm(formData: FormData) {
     isBeginnerFriendly:
       formData.get("isBeginnerFriendly") === "on" ||
       experienceLevel === "beginner_welcome",
-    positionsAvailable: Number.isFinite(positions) && positions > 0 ? positions : 1,
-    applicationDeadline: deadline || null,
+    positionsAvailable: Number.isFinite(positions)
+      ? Math.min(Math.max(positions, 1), 50)
+      : 1,
+    applicationDeadline: deadline,
   };
 }
 
@@ -72,6 +78,7 @@ export async function createProject(formData: FormData) {
 export async function updateProject(formData: FormData) {
   const { user } = await requirePoster();
   const id = String(formData.get("id") ?? "");
+  if (!isUuid(id)) redirect("/projects");
   const data = parseProjectForm(formData);
   const isSupervisor = formData.get("isSupervisor") === "on";
 
@@ -97,6 +104,7 @@ export async function updateProject(formData: FormData) {
 export async function closeProject(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get("id") ?? "");
+  if (!isUuid(id)) redirect("/projects");
 
   await db
     .update(projects)
@@ -111,6 +119,7 @@ export async function closeProject(formData: FormData) {
 export async function completeProject(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get("id") ?? "");
+  if (!isUuid(id)) redirect("/projects");
 
   // Owner guard via where clause; only award if a row was actually updated.
   const updated = await db
@@ -131,6 +140,7 @@ export async function completeProject(formData: FormData) {
 export async function reopenProject(formData: FormData) {
   const user = await requireUser();
   const id = String(formData.get("id") ?? "");
+  if (!isUuid(id)) redirect("/projects");
 
   await db
     .update(projects)

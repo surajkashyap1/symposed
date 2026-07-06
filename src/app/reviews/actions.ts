@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { reviews, profiles } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { isUuid } from "@/lib/utils";
 import { notify } from "@/lib/notify";
 import { dimensionsFor, RATING_MIN, RATING_MAX } from "@/lib/review-meta";
 import { getReviewableContext, recomputeReliability } from "@/lib/queries/reviews";
@@ -15,6 +16,7 @@ export async function submitReview(formData: FormData) {
   const user = await requireUser();
   const projectId = String(formData.get("projectId") ?? "");
   const revieweeId = String(formData.get("revieweeId") ?? "");
+  if (!isUuid(projectId) || !isUuid(revieweeId)) redirect("/projects");
 
   const ctx = await getReviewableContext(projectId, user.id, revieweeId);
   if (!ctx) redirect(`/projects/${projectId}`);

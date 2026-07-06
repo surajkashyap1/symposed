@@ -288,3 +288,10 @@ create table saved_projects (
 --   • mentor admin tools (checklists, reminders)     -> §7 admin
 --   • leaderboard snapshots                          -> §11
 -- =====================================================================
+
+-- --------------------- ROW LEVEL SECURITY ----------------------------
+-- Deny-all backstop: RLS is enabled on every table with NO policies.
+-- All access goes through server actions (service_role bypasses RLS);
+-- the public anon/authenticated API and Realtime therefore return nothing.
+-- Applied via drizzle/manual/0004_enable_rls.sql — if you add a table,
+-- add it there too and re-apply.

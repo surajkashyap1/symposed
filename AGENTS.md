@@ -26,7 +26,8 @@ professionals with research opportunities (projects, audits, posters). Goal:
 - DB access only from server code (server actions / route handlers / server
   components). Never import `src/db` into a client component.
 - Business logic + auth checks live in server actions using the service role;
-  RLS is a backstop, added before launch.
+  RLS is enabled deny-all on every table as a backstop (no policies — see
+  `drizzle/manual/0004_enable_rls.sql`). New tables must be added there.
 - Application rate limit (3 / rolling 7 days) is computed in app logic, not a
   table — see `applications_applicant_time_idx`.
 - Run `npm run db:generate` after editing the Drizzle schema, then

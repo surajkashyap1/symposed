@@ -3,10 +3,10 @@
 -- Apply with: node scripts/apply-sql.mjs drizzle/manual/0002_realtime_messaging.sql
 -- Re-run safely on a fresh database.
 --
--- NOTE: RLS is currently disabled (added as a backstop before launch — see
--- AGENTS.md). With RLS off, Realtime broadcasts row changes to subscribers;
--- the thread subscription is filtered by conversation_id. Before launch, enable
--- RLS + Realtime authorization so users only receive their own conversations.
+-- NOTE: RLS is now enabled everywhere with no policies (0004_enable_rls.sql),
+-- so Realtime broadcasts nothing to browser subscribers. If live chat or
+-- notification streaming returns, add per-table select policies so users
+-- only receive their own rows.
 
 do $$
 begin

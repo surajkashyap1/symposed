@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation";
+import { desc } from "drizzle-orm";
+import { db } from "@/db";
+import { appErrors } from "@/db/schema";
 import { requireUser, ensureProfile } from "@/lib/auth";
 import { getMetrics } from "@/lib/queries/metrics";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Admin-only metrics. Access is gated by the ADMIN_EMAILS env var (comma-
 // separated). If unset, nobody can view it — returns 404 rather than leaking
@@ -16,7 +19,10 @@ export default async function AdminPage() {
     .filter(Boolean);
   if (!admins.includes(profile.email.toLowerCase())) notFound();
 
-  const m = await getMetrics();
+  const [m, recentErrors] = await Promise.all([
+    getMetrics(),
+    db.select().from(appErrors).orderBy(desc(appErrors.createdAt)).limit(25),
+  ]);
 
   const stats: { label: string; value: string | number; hint?: string }[] = [
     { label: "Total users", value: m.totalUsers },
@@ -50,6 +56,42 @@ export default async function AdminPage() {
           </Card>
         ))}
       </div>
+
+      <h2 className="mt-12 text-lg font-semibold tracking-tight">
+        Recent errors
+      </h2>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Unhandled server errors from the last 30 days, newest first.
+      </p>
+      {recentErrors.length === 0 ? (
+        <p className="mt-4 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground">
+          No errors recorded.
+        </p>
+      ) : (
+        <div className="mt-4 flex flex-col gap-3">
+          {recentErrors.map((e) => (
+            <Card key={e.id}>
+              <CardHeader>
+                <CardTitle className="text-sm font-medium break-words">
+                  {e.message}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="text-xs text-muted-foreground">
+                <p>
+                  {e.method} {e.path} · {e.routeType}
+                  {e.digest ? ` · digest ${e.digest}` : ""} ·{" "}
+                  {e.createdAt.toLocaleString("en-GB")}
+                </p>
+                {e.stack && (
+                  <pre className="mt-2 max-h-40 overflow-auto rounded bg-muted p-2 whitespace-pre-wrap break-words">
+                    {e.stack}
+                  </pre>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </main>
   );
 }

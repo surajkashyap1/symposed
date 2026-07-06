@@ -52,7 +52,7 @@ export const applicationStatus = pgEnum("application_status", [
 ]);
 
 export const verificationType = pgEnum("verification_type", [
-  "university_email", "nhs_email", "linkedin", "manual",
+  "university_email", "nhs_email", "linkedin", "manual", "login_email",
 ]);
 
 export const verificationStatus = pgEnum("verification_status", [
@@ -85,6 +85,7 @@ export const profiles = pgTable("profiles", {
   linkedinUrl: text("linkedin_url"),
   specialty: text("specialty"),
   isVerified: boolean("is_verified").notNull().default(false),
+  emailConfirmedAt: timestamp("email_confirmed_at", { withTimezone: true }),
   canSupervise: boolean("can_supervise").notNull().default(false),
   isNewResearcher: boolean("is_new_researcher").notNull().default(true),
   reliabilityScore: numeric("reliability_score", { precision: 3, scale: 2 }),
@@ -275,3 +276,19 @@ export const savedProjects = pgTable("saved_projects", {
   projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [primaryKey({ columns: [t.profileId, t.projectId] })]);
+
+// ------------------------ ERROR MONITORING ---------------------------
+
+// Unhandled server errors captured by instrumentation.onRequestError, shown
+// on /admin. Rows older than 30 days are pruned on insert.
+export const appErrors = pgTable("app_errors", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  message: text("message").notNull(),
+  digest: text("digest"),
+  stack: text("stack"),
+  path: text("path"),
+  method: text("method"),
+  routePath: text("route_path"),
+  routeType: text("route_type"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("app_errors_created_idx").on(t.createdAt)]);

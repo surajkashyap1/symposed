@@ -8,6 +8,7 @@
 -- component ever needs direct Supabase access (e.g. live chat), add an
 -- explicit policy for that table here.
 
+alter table public.app_errors enable row level security;
 alter table public.applications enable row level security;
 alter table public.badges enable row level security;
 alter table public.conversation_participants enable row level security;

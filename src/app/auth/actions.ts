@@ -7,7 +7,10 @@ import { eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { profileCertifications, profiles, profileSkills, skills } from "@/db/schema";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { ensureProfile, requireUser } from "@/lib/auth";
+import { sendEmail } from "@/lib/email";
+import { sendLoginEmailConfirmation } from "@/lib/confirm-email";
 import {
   computeCompleteness,
   countWords,
@@ -81,12 +84,95 @@ export async function signup(formData: FormData) {
   // If email confirmation is disabled, we get a session immediately.
   if (data.session && data.user) {
     await ensureProfile(data.user);
+    // Supabase autoconfirm is on, so prove the address works app-side
+    // (no-op until Resend is configured).
+    await sendLoginEmailConfirmation(data.user.id, email, origin);
     revalidatePath("/", "layout");
     redirect("/onboarding");
   }
 
   // Otherwise the user must click the link in their email.
   redirect("/signup?check=email");
+}
+
+export async function resendEmailConfirmation() {
+  const user = await requireUser();
+  if (!user.email) redirect("/dashboard");
+  const origin =
+    (await headers()).get("origin") ?? process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  await sendLoginEmailConfirmation(user.id, user.email, origin);
+  redirect("/dashboard?confirmation=sent");
+}
+
+export async function requestPasswordReset(formData: FormData) {
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  if (!email) redirect("/forgot-password");
+
+  const origin =
+    (await headers()).get("origin") ?? process.env.NEXT_PUBLIC_SITE_URL ?? "";
+
+  if (process.env.RESEND_API_KEY && process.env.RESEND_FROM) {
+    // Send the recovery link through Resend: Supabase's built-in mailer is
+    // capped at ~2 emails/hour, which real traffic would exhaust fast.
+    const admin = createAdminClient();
+    const { data, error } = await admin.auth.admin.generateLink({
+      type: "recovery",
+      email,
+    });
+    if (!error && data.properties?.hashed_token) {
+      const link = `${origin}/auth/confirm?token_hash=${data.properties.hashed_token}&type=recovery&next=/auth/reset-password`;
+      await sendEmail({
+        to: email,
+        subject: "Reset your Symposed password",
+        text: `Someone asked to reset the password for this email on Symposed.\n\nSet a new password here:\n\n${link}\n\nThe link only works once. If this wasn't you, you can ignore this email.`,
+      });
+    }
+    // generateLink fails for unknown emails; fall through to the same
+    // confirmation either way so the form never reveals whether an account
+    // exists.
+  } else {
+    const supabase = await createClient();
+    await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${origin}/auth/confirm?next=/auth/reset-password`,
+    });
+  }
+
+  redirect("/forgot-password?sent=1");
+}
+
+export async function updatePassword(formData: FormData) {
+  const password = String(formData.get("password") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+
+  if (password.length < 8)
+    redirect(
+      `/auth/reset-password?error=${encodeURIComponent(
+        "Password must be at least 8 characters."
+      )}`
+    );
+  if (password !== confirm)
+    redirect(
+      `/auth/reset-password?error=${encodeURIComponent("Passwords don't match.")}`
+    );
+
+  // The recovery link established the session; without one the link was bad.
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user)
+    redirect(
+      `/forgot-password?error=${encodeURIComponent(
+        "Your reset link has expired. Request a new one."
+      )}`
+    );
+
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error)
+    redirect(`/auth/reset-password?error=${encodeURIComponent(error.message)}`);
+
+  revalidatePath("/", "layout");
+  redirect("/dashboard");
 }
 
 export async function signOut() {

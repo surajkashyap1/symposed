@@ -35,7 +35,7 @@ create type application_status as enum
   ('pending','shortlisted','accepted','rejected','withdrawn');
 
 create type verification_type as enum
-  ('university_email','nhs_email','linkedin','manual');
+  ('university_email','nhs_email','linkedin','manual','login_email');
 create type verification_status as enum ('pending','verified','rejected');
 
 create type conversation_type as enum ('application_dm','project_chat');
@@ -56,6 +56,7 @@ create table profiles (
   career_stage        career_stage not null default 'other',
   specialty           text,
   is_verified         boolean not null default false,  -- any verification passed
+  email_confirmed_at  timestamptz,                 -- login email confirmed (app-side)
   can_supervise       boolean not null default false,  -- eligible as project supervisor
   is_new_researcher   boolean not null default true,   -- no completed projects yet
   reliability_score   numeric(3,2),                -- 0.00-5.00, aggregated; null until rated
@@ -280,6 +281,24 @@ create table saved_projects (
   created_at  timestamptz not null default now(),
   primary key (profile_id, project_id)
 );
+
+-- --------------------- ERROR MONITORING ------------------------------
+
+-- Unhandled server errors captured by instrumentation.onRequestError,
+-- shown on /admin. Rows older than 30 days are pruned on insert.
+create table app_errors (
+  id          uuid primary key default gen_random_uuid(),
+  message     text not null,
+  digest      text,
+  stack       text,
+  path        text,
+  method      text,
+  route_path  text,
+  route_type  text,
+  created_at  timestamptz not null default now()
+);
+
+create index app_errors_created_idx on app_errors (created_at);
 
 -- =====================================================================
 -- DEFERRED (do NOT build for MVP — add tables when you reach these):

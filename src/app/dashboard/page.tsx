@@ -4,9 +4,10 @@ import { requireUser, ensureProfile } from "@/lib/auth";
 import { CAREER_STAGES } from "@/lib/profile";
 import { getProjectsByOwner } from "@/lib/queries/projects";
 import { getProfileCertifications, getProfileSkills } from "@/lib/queries/profiles";
+import { resendEmailConfirmation } from "@/app/auth/actions";
 import { ProjectCard } from "@/components/project-card";
 import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -14,9 +15,18 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ confirmation?: string }>;
+}) {
   const user = await requireUser();
   const profile = await ensureProfile(user);
+  const { confirmation } = await searchParams;
+  // Only nag about confirmation when we can actually send the email.
+  const emailProviderConfigured = Boolean(
+    process.env.RESEND_API_KEY && process.env.RESEND_FROM
+  );
   const [myProjects, skillNames, certifications] = await Promise.all([
     getProjectsByOwner(user.id),
     getProfileSkills(user.id),
@@ -60,6 +70,26 @@ export default async function DashboardPage() {
           </Link>
         </div>
       </div>
+
+      {emailProviderConfigured && !profile.emailConfirmedAt && (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
+          {confirmation === "sent" ? (
+            <p>Confirmation email sent — check your inbox (and spam folder).</p>
+          ) : (
+            <>
+              <p>
+                Please confirm your email address so listers and applicants can
+                reach you. We sent a link to {profile.email}.
+              </p>
+              <form action={resendEmailConfirmation}>
+                <Button type="submit" variant="outline" size="sm">
+                  Resend email
+                </Button>
+              </form>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Verification + status badges */}
       <div className="mt-6 flex flex-wrap gap-2">

@@ -4,6 +4,7 @@ import { signOut } from "@/app/auth/actions";
 import { getUnreadNotificationCount } from "@/lib/queries/notifications";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { LogoLockup } from "@/components/logo";
 
 export async function SiteHeader() {
   const user = await getSessionUser();
@@ -14,11 +15,8 @@ export async function SiteHeader() {
   return (
     <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-6">
-        <Link
-          href="/"
-          className="shrink-0 font-heading text-xl font-semibold tracking-tight text-foreground transition-opacity hover:opacity-70"
-        >
-          Symposed
+        <Link href="/" className="shrink-0 transition-opacity hover:opacity-70">
+          <LogoLockup />
         </Link>
         <nav className="flex items-center gap-1.5 overflow-x-auto overflow-y-hidden py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
           <Link

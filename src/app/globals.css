@@ -35,6 +35,12 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  /* Brand constants that don't flip with the theme: deep claret (logo tile,
+     rare accents) and the ink-green statement surface (footer, CTA band). */
+  --color-brand: oklch(0.41 0.107 23);
+  --color-brand-foreground: oklch(0.971 0.01 58.2);
+  --color-ink: oklch(0.243 0.014 196);
+  --color-ink-foreground: oklch(0.93 0.009 84);
   --color-success-foreground: var(--success-foreground);
   --color-success: var(--success);
   --color-popover-foreground: var(--popover-foreground);

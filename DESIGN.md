@@ -1,6 +1,6 @@
 # Design
 
-Visual system for Incipit. Direction: **Scholarly Editorial** — academic-
+Visual system for Symposed. Direction: **Scholarly Editorial** — academic-
 publishing heritage executed as a modern product UI. Type and whitespace lead;
 claret is the single restrained accent. Tokens live in `src/app/globals.css`
 (OKLCH); fonts wired in `src/app/layout.tsx` via `next/font`.
@@ -59,3 +59,18 @@ states. Beginner-friendly + verified use the `success` token, not raw emerald.
 
 Restrained, state-only: 150–250ms, ease-out. No page-load choreography (product
 loads into a task). Every transition has a `prefers-reduced-motion` fallback.
+
+## Logo
+
+The mark is an **open book with the brand "S" set into the gutter** — the
+book parts around the letter via an SVG mask channel, so the interlock
+survives any background. The S is the true Newsreader glyph outline
+(extracted from the shipped font subset with `scripts/extract-glyph.mjs`);
+the book is the canonical open-book silhouette (lucide `book-open`, ISC).
+Canvas is wide (viewBox 0 0 96 64): book scaled 3.3× and centred, S at 1.0
+in the gutter, mask dilation 3.8, book stroke 2.4 round-cap (S stroked 1.15 for weight). Geometry lives in
+`src/components/logo.tsx` (`LogoMark`, colour via `currentColor`;
+`LogoLockup` pairs it with "Symposed" in Newsreader 600). Favicon/app icon
+(`src/app/icon.svg`, `src/app/apple-icon.png`) put the paper-coloured mark on
+a claret tile (rx 14). Dark mode inherits the lightened claret via
+`text-primary`. The homepage hero carries the mark as a 5%-opacity watermark.

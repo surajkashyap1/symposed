@@ -41,7 +41,11 @@ export function ReportContent({
           <a href="/safety" className="underline" target="_blank">
             Safety &amp; Reporting Policy
           </a>
-          . For urgent safety issues email safety@symposed.org.
+          . For urgent safety issues use our{" "}
+          <a href="/contact" className="underline" target="_blank">
+            contact form
+          </a>
+          .
         </p>
         <Button type="submit" size="sm" variant="outline" className="self-start">
           Submit report

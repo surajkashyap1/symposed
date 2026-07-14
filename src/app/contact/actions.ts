@@ -40,11 +40,17 @@ export async function submitContactMessage(formData: FormData) {
   });
 
   // Best-effort forward so urgent topics aren't only discovered on /admin.
-  await sendEmail({
-    to: topic === "data protection" ? "privacy@symposed.org" : "hello@symposed.org",
-    subject: `Symposed contact form: ${topic}`,
-    text: `From: ${email ?? "not given"}\nTopic: ${topic}\n\n${message}`,
-  });
+  // Goes to the (private) admin inbox; no public mailboxes exist yet.
+  const inbox =
+    process.env.CONTACT_INBOX ??
+    (process.env.ADMIN_EMAILS ?? "").split(",")[0]?.trim();
+  if (inbox) {
+    await sendEmail({
+      to: inbox,
+      subject: `Symposed contact form: ${topic}`,
+      text: `From: ${email ?? "not given"}\nTopic: ${topic}\n\n${message}`,
+    });
+  }
 
   redirect("/contact?sent=1");
 }

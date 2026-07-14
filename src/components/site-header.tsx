@@ -20,6 +20,12 @@ export async function SiteHeader() {
         </Link>
         <nav className="flex items-center gap-1.5 overflow-x-auto overflow-y-hidden py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
           <Link
+            href="/about"
+            className={buttonVariants({ variant: "ghost", size: "sm" })}
+          >
+            About
+          </Link>
+          <Link
             href="/projects"
             className={buttonVariants({ variant: "ghost", size: "sm" })}
           >

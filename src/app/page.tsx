@@ -33,8 +33,8 @@ export default async function Home() {
         </h1>
         <p className="mt-5 max-w-xl text-lg leading-relaxed text-muted-foreground">
           Symposed matches students and clinicians with real audits, reviews,
-          case reports and posters — beginner-friendly projects first, so you
-          don&apos;t need experience to get experience.
+          case reports and posters. Beginner-friendly projects come first, so
+          you don&apos;t need experience to get experience.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           {user ? (
@@ -168,7 +168,7 @@ export default async function Home() {
           Work that becomes a line on your CV
         </h2>
         <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-          Real, finishable projects — not vague promises of
+          Real, finishable projects, not vague promises of
           &ldquo;involvement&rdquo;.
         </p>
         <dl className="mt-8 border-t">
@@ -204,7 +204,7 @@ export default async function Home() {
             completed projects. No patient data, anywhere.
           </p>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-ink-foreground/70">
-            Free for everyone — enforced automatically and by policy.
+            Free for everyone, enforced automatically and by policy.
           </p>
           {!user && (
             <Link

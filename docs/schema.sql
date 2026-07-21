@@ -55,6 +55,7 @@ create table profiles (
   university          text,
   career_stage        career_stage not null default 'other',
   specialty           text,
+  contact_phone       text,                        -- private; revealed to the counterparty only on acceptance, never on a public profile
   is_verified         boolean not null default false,  -- any verification passed
   email_confirmed_at  timestamptz,                 -- login email confirmed (app-side)
   can_supervise       boolean not null default false,  -- eligible as project supervisor

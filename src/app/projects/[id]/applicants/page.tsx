@@ -10,6 +10,7 @@ import type { RankingResult } from "@/lib/ranking";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ContactDetails } from "@/components/contact-details";
 
 function stageLabel(value: string) {
   return CAREER_STAGES.find((s) => s.value === value)?.label ?? value;
@@ -158,6 +159,14 @@ export default async function ApplicantsPage({
                       {STATUS_LABELS[a.status]}
                     </Badge>
                   </div>
+
+                  {a.status === "accepted" && !anonymous && a.applicantEmail && (
+                    <ContactDetails
+                      heading={`${a.applicantName ?? "This applicant"}'s contact details`}
+                      email={a.applicantEmail}
+                      phone={a.applicantPhone}
+                    />
+                  )}
 
                   <ScoreBreakdown ranking={a.ranking} />
 

@@ -118,6 +118,12 @@ export type MyApplicationItem = {
   projectStatus: string;
   projectTypeLabel: string;
   projectOwnerId: string;
+  // Lister's contact details — populated only once this application is
+  // accepted (auto-reveal). null otherwise so unrevealed contacts never reach
+  // the client.
+  listerName: string | null;
+  listerEmail: string | null;
+  listerPhone: string | null;
 };
 
 // Applicant dashboard: the current user's applications with project context.
@@ -135,23 +141,33 @@ export async function getApplicationsByApplicant(
       projectStatus: projects.status,
       projectType: projects.projectType,
       projectOwnerId: projects.ownerId,
+      listerName: profiles.fullName,
+      listerEmail: profiles.email,
+      listerPhone: profiles.contactPhone,
     })
     .from(applications)
     .innerJoin(projects, eq(projects.id, applications.projectId))
+    .innerJoin(profiles, eq(profiles.id, projects.ownerId))
     .where(eq(applications.applicantId, applicantId))
     .orderBy(desc(applications.createdAt));
 
-  return rows.map((r) => ({
-    id: r.id,
-    status: r.status,
-    createdAt: r.createdAt,
-    motivation: r.motivation,
-    projectId: r.projectId,
-    projectTitle: r.projectTitle,
-    projectStatus: r.projectStatus,
-    projectTypeLabel: projectTypeLabel(r.projectType),
-    projectOwnerId: r.projectOwnerId,
-  }));
+  return rows.map((r) => {
+    const revealed = r.status === "accepted";
+    return {
+      id: r.id,
+      status: r.status,
+      createdAt: r.createdAt,
+      motivation: r.motivation,
+      projectId: r.projectId,
+      projectTitle: r.projectTitle,
+      projectStatus: r.projectStatus,
+      projectTypeLabel: projectTypeLabel(r.projectType),
+      projectOwnerId: r.projectOwnerId,
+      listerName: revealed ? r.listerName : null,
+      listerEmail: revealed ? r.listerEmail : null,
+      listerPhone: revealed ? r.listerPhone : null,
+    };
+  });
 }
 
 export type ApplicantItem = {
@@ -173,6 +189,9 @@ export type ApplicantItem = {
   applicantPreferredSpecialties: string | null;
   applicantSkills: string | null;
   applicantCertificationCount: number;
+  // Applicant's contact details — populated only once accepted (auto-reveal).
+  applicantEmail: string | null;
+  applicantPhone: string | null;
 };
 
 export type ProjectRankMeta = {
@@ -226,6 +245,8 @@ export async function getRankedApplicantsForProject(
       applicantPreferredSpecialties: profiles.preferredSpecialties,
       applicantSkills,
       applicantCertificationCount,
+      applicantEmail: profiles.email,
+      applicantPhone: profiles.contactPhone,
       reliabilityScore: profiles.reliabilityScore,
       profileCompleteness: profiles.profileCompleteness,
       applicantSpecialty: profiles.specialty,
@@ -280,6 +301,8 @@ export async function getRankedApplicantsForProject(
         applicantPreferredSpecialties: r.applicantPreferredSpecialties,
         applicantSkills: r.applicantSkills,
         applicantCertificationCount: r.applicantCertificationCount,
+        applicantEmail: r.status === "accepted" ? r.applicantEmail : null,
+        applicantPhone: r.status === "accepted" ? r.applicantPhone : null,
         ranking,
       };
     })

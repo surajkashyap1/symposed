@@ -6,6 +6,7 @@ import { withdrawApplication } from "@/app/applications/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ContactDetails } from "@/components/contact-details";
 
 export default async function ApplicationsPage() {
   const user = await requireUser();
@@ -52,8 +53,9 @@ export default async function ApplicationsPage() {
           {apps.map((a) => (
             <li
               key={a.id}
-              className="flex items-start justify-between gap-4 rounded-lg border p-4"
+              className="flex flex-col gap-4 rounded-lg border p-4"
             >
+              <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <Link
                   href={`/projects/${a.projectId}`}
@@ -87,6 +89,14 @@ export default async function ApplicationsPage() {
                   </Link>
                 )}
               </div>
+              </div>
+              {a.status === "accepted" && a.listerEmail && (
+                <ContactDetails
+                  heading={`${a.listerName ?? "The project lister"}'s contact details`}
+                  email={a.listerEmail}
+                  phone={a.listerPhone}
+                />
+              )}
             </li>
           ))}
         </ul>

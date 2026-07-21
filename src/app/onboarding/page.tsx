@@ -141,6 +141,24 @@ export default async function OnboardingPage({
             />
 
             <div className="grid gap-2">
+              <Label htmlFor="contactPhone">Phone number (optional)</Label>
+              <Input
+                id="contactPhone"
+                name="contactPhone"
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="e.g. 07123 456789"
+                defaultValue={profile.contactPhone ?? ""}
+              />
+              <p className="text-xs text-muted-foreground">
+                Private. Never shown on your profile — only shared with the other
+                person once an application is accepted. Your account email is
+                always used as your contact; a phone number is optional.
+              </p>
+            </div>
+
+            <div className="grid gap-2">
               <Label htmlFor="linkedinUrl">LinkedIn profile (optional)</Label>
               <Input
                 id="linkedinUrl"

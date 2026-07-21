@@ -2,20 +2,30 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { and, eq } from "drizzle-orm";
+import { and, count, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { applications, projects } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { isUuid } from "@/lib/utils";
 import { detectPatientIdentifiers } from "@/lib/sensitive-info";
 import { notify } from "@/lib/notify";
-import { validateApplication, STATUS_LABELS, type ApplicationStatus } from "@/lib/application-meta";
+import { sendContactExchangeEmails } from "@/lib/contact-exchange";
+import {
+  validateApplication,
+  STATUS_LABELS,
+  APPLICATION_WINDOW_DAYS,
+  type ApplicationStatus,
+} from "@/lib/application-meta";
 import { parseHoursPerWeek } from "@/lib/profile";
 import { getApplicationAllowance, getMyApplication } from "@/lib/queries/applications";
 
 function redirectWith(projectId: string, error: string): never {
   redirect(`/projects/${projectId}?error=${encodeURIComponent(error)}`);
 }
+
+// Thrown inside the submit transaction when the rolling-window limit is hit, so
+// the surrounding catch can tell a rate-limit rollback apart from a duplicate.
+class ApplicationLimitError extends Error {}
 
 export async function submitApplication(formData: FormData) {
   const user = await requireUser();
@@ -66,7 +76,9 @@ export async function submitApplication(formData: FormData) {
       )}. Patient-identifiable information isn't allowed on Symposed.`
     );
 
-  // Rate limit: 3 / rolling 7 days (+bonus). Enforced server-side.
+  // Rate limit: 3 / rolling 7 days (+bonus). Enforced server-side. This first
+  // read is only for a friendly early bail-out and the accurate limit; the
+  // authoritative check happens inside the transaction below.
   const allowance = await getApplicationAllowance(user.id);
   if (allowance.remaining <= 0) {
     const when = allowance.resetsAt
@@ -79,15 +91,43 @@ export async function submitApplication(formData: FormData) {
   }
 
   try {
-    await db.insert(applications).values({
-      projectId,
-      applicantId: user.id,
-      motivation: input.motivation,
-      suitability: input.suitability,
-      hoursPerWeek: input.hoursPerWeek,
-      skillsSummary: input.skillsSummary || null,
+    await db.transaction(async (tx) => {
+      // Serialise this applicant's concurrent submissions. Without this, two
+      // near-simultaneous requests can both pass the count check above and both
+      // insert, sneaking past the limit — the unique constraint only blocks
+      // duplicate (project, applicant) pairs, not the per-window count. The lock
+      // is released automatically when the transaction ends.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${user.id}))`);
+
+      const since = new Date(Date.now() - APPLICATION_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+      const [{ value: used }] = await tx
+        .select({ value: count() })
+        .from(applications)
+        .where(
+          and(
+            eq(applications.applicantId, user.id),
+            gte(applications.createdAt, since)
+          )
+        );
+      // Re-check against the (bonus-aware) limit now that we hold the lock.
+      if (used >= allowance.limit) throw new ApplicationLimitError();
+
+      await tx.insert(applications).values({
+        projectId,
+        applicantId: user.id,
+        motivation: input.motivation,
+        suitability: input.suitability,
+        hoursPerWeek: input.hoursPerWeek,
+        skillsSummary: input.skillsSummary || null,
+      });
     });
-  } catch {
+  } catch (e) {
+    if (e instanceof ApplicationLimitError) {
+      redirectWith(
+        projectId,
+        `You've used all ${allowance.limit} applications for this week.`
+      );
+    }
     // Unique violation = concurrent duplicate; treat as already applied.
     redirectWith(projectId, "You've already applied to this project.");
   }
@@ -143,7 +183,7 @@ export async function setApplicationStatus(formData: FormData) {
   if (!owned) redirect("/dashboard");
 
   const [app] = await db
-    .select({ applicantId: applications.applicantId })
+    .select({ applicantId: applications.applicantId, status: applications.status })
     .from(applications)
     .where(and(eq(applications.id, id), eq(applications.projectId, projectId)))
     .limit(1);
@@ -153,6 +193,17 @@ export async function setApplicationStatus(formData: FormData) {
     .update(applications)
     .set({ status })
     .where(and(eq(applications.id, id), eq(applications.projectId, projectId)));
+
+  // Auto-reveal contact details on acceptance: both sides get each other's
+  // email (+ optional phone) by email. Only on the transition *into* accepted
+  // so re-clicking Accept doesn't re-send.
+  if (status === "accepted" && app.status !== "accepted") {
+    await sendContactExchangeEmails({
+      projectTitle: owned.title,
+      listerId: user.id,
+      applicantId: app.applicantId,
+    });
+  }
 
   await notify({
     profileId: app.applicantId,

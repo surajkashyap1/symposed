@@ -16,6 +16,7 @@ import {
   computeCompleteness,
   countWords,
   CAREER_STAGES,
+  parseContactPhone,
   parseHoursPerWeek,
   parseListText,
   parseSkillNames,
@@ -279,6 +280,7 @@ export async function updateProfile(formData: FormData) {
     careerStage,
     careerStageOther,
     linkedinUrl,
+    contactPhone: parseContactPhone(formData.get("contactPhone")),
   };
 
   const completeness = computeCompleteness(fields as Partial<Profile>);

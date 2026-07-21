@@ -51,6 +51,19 @@ export function parseHoursPerWeek(value: FormDataEntryValue | null): number | nu
   return Math.min(80, Math.max(0, parsed));
 }
 
+// Optional contact phone. Kept private (never on a public profile), so we only
+// normalise lightly: allow digits, spaces and the usual +()-. punctuation, trim
+// to a sane length, and return null when effectively empty.
+export function parseContactPhone(value: FormDataEntryValue | null): string | null {
+  const cleaned = String(value ?? "")
+    .replace(/[^\d+()\-\s]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 32);
+  // Require at least a few digits to count as a real number.
+  return (cleaned.match(/\d/g)?.length ?? 0) >= 5 ? cleaned : null;
+}
+
 export function parseListText(value: FormDataEntryValue | null): string | null {
   const items = String(value ?? "")
     .split(/[\n,]/)

@@ -83,6 +83,10 @@ export const profiles = pgTable("profiles", {
   careerStage: careerStage("career_stage").notNull().default("other"),
   careerStageOther: text("career_stage_other"),
   linkedinUrl: text("linkedin_url"),
+  // Private contact detail, optional. Never rendered on a public profile —
+  // only revealed to the counterparty once an application is accepted. The
+  // account `email` is the always-present contact method; phone is extra.
+  contactPhone: text("contact_phone"),
   specialty: text("specialty"),
   isVerified: boolean("is_verified").notNull().default(false),
   emailConfirmedAt: timestamp("email_confirmed_at", { withTimezone: true }),

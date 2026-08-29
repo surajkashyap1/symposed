@@ -312,6 +312,79 @@ create table contact_messages (
   created_at  timestamptz not null default now()
 );
 
+-- ------------------------ TEACHING PLATFORM --------------------------
+
+-- Commissioned topics on /teach: admin-editable rows, never hardcoded.
+create type teaching_topic_status as enum
+  ('accepting_submissions', 'under_review', 'filled');
+
+create table teaching_topics (
+  id          serial primary key,
+  title       text not null,
+  description text not null,
+  format      text not null,
+  deadline    date,
+  status      teaching_topic_status not null default 'accepting_submissions',
+  sort_order  integer not null default 0,
+  created_at  timestamptz not null default now()
+);
+
+-- Rolling review; publication is gated on direct clinician confirmation via
+-- the emailed token link (applicant-forwarded confirmations are forgeable).
+create type teaching_submission_status as enum
+  ('submitted', 'under_review', 'revisions_requested', 'approved',
+   'clinician_verification', 'scheduled', 'delivered', 'declined');
+
+create type clinician_verification_status as enum
+  ('pending', 'confirmed', 'declined');
+
+create type teaching_delivery_format as enum
+  ('live_with_recordings', 'live_only', 'recorded_only');
+
+create table teaching_submissions (
+  id                     uuid primary key default gen_random_uuid(),
+  profile_id             uuid not null references profiles(id) on delete cascade,
+  topic_id               integer references teaching_topics(id) on delete set null,
+  applicant_gmc_number   text,
+  title                  text not null,
+  description            text not null,
+  learning_objectives    text[] not null,   -- 3–5 entries
+  target_audience        text[] not null,
+  sessions_plan          text not null,
+  delivery_format        teaching_delivery_format not null,
+  start_availability     text not null,
+  relevant_experience    text not null,
+  materials_path         text not null,     -- private bucket path, signed URLs only
+  materials_filename     text not null,
+  status                 teaching_submission_status not null default 'submitted',
+  admin_feedback         text,
+  clinician_name         text not null,
+  clinician_grade        text not null,
+  clinician_specialty    text not null,
+  clinician_institution  text not null,
+  clinician_gmc_number   text not null,
+  clinician_email        text not null,
+  clinician_token        text not null unique,
+  clinician_status       clinician_verification_status not null default 'pending',
+  clinician_responded_at timestamptz,
+  created_at             timestamptz not null default now(),
+  updated_at             timestamptz not null default now()
+);
+
+create index teaching_submissions_profile_idx on teaching_submissions (profile_id);
+create index teaching_submissions_status_idx on teaching_submissions (status, created_at);
+
+-- Pre-edit payload snapshotted on every resubmission (version history).
+create table teaching_submission_revisions (
+  id            uuid primary key default gen_random_uuid(),
+  submission_id uuid not null references teaching_submissions(id) on delete cascade,
+  payload       text not null,  -- JSON snapshot of the replaced version
+  created_at    timestamptz not null default now()
+);
+
+create index teaching_submission_revisions_submission_idx
+  on teaching_submission_revisions (submission_id);
+
 -- -------------- AVAILABLE FOR PROJECTS (reverse board) ---------------
 
 -- A user advertising themselves to project listers. One listing per user;

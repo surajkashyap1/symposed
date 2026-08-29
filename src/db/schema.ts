@@ -320,6 +320,89 @@ export const reports = pgTable("reports", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("reports_status_idx").on(t.status, t.createdAt)]);
 
+// ------------------------ TEACHING PLATFORM --------------------------
+
+// Commissioned topics shown on /teach — administrator-editable rows, never
+// hardcoded (docs spec §4.1.3). Seeded by drizzle/manual/0005_teaching_seed.sql.
+export const teachingTopicStatus = pgEnum("teaching_topic_status", [
+  "accepting_submissions", "under_review", "filled",
+]);
+
+export const teachingTopics = pgTable("teaching_topics", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  format: text("format").notNull(),
+  deadline: date("deadline"),
+  status: teachingTopicStatus("status").notNull().default("accepting_submissions"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Rolling review, explicitly not a competition (spec §4.2). A submission
+// cannot reach "scheduled"/published until the named clinician has confirmed
+// via their emailed token link — applicant-forwarded confirmations are
+// trivially forged, so the platform contacts the clinician directly.
+export const teachingSubmissionStatus = pgEnum("teaching_submission_status", [
+  "submitted", "under_review", "revisions_requested", "approved",
+  "clinician_verification", "scheduled", "delivered", "declined",
+]);
+
+export const clinicianVerificationStatus = pgEnum("clinician_verification_status", [
+  "pending", "confirmed", "declined",
+]);
+
+export const teachingDeliveryFormat = pgEnum("teaching_delivery_format", [
+  "live_with_recordings", "live_only", "recorded_only",
+]);
+
+export const teachingSubmissions = pgTable("teaching_submissions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  profileId: uuid("profile_id").notNull()
+    .references(() => profiles.id, { onDelete: "cascade" }),
+  // null topic = "Proposing my own topic"
+  topicId: integer("topic_id").references(() => teachingTopics.id, { onDelete: "set null" }),
+  applicantGmcNumber: text("applicant_gmc_number"),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  learningObjectives: text("learning_objectives").array().notNull(), // 3–5
+  targetAudience: text("target_audience").array().notNull(),
+  sessionsPlan: text("sessions_plan").notNull(), // number of sessions + duration
+  deliveryFormat: teachingDeliveryFormat("delivery_format").notNull(),
+  startAvailability: text("start_availability").notNull(),
+  relevantExperience: text("relevant_experience").notNull(),
+  // Path inside the private teaching-materials bucket; served only via
+  // service-role signed URLs, never a public URL (spec §2.2).
+  materialsPath: text("materials_path").notNull(),
+  materialsFilename: text("materials_filename").notNull(),
+  status: teachingSubmissionStatus("status").notNull().default("submitted"),
+  adminFeedback: text("admin_feedback"),
+  clinicianName: text("clinician_name").notNull(),
+  clinicianGrade: text("clinician_grade").notNull(),
+  clinicianSpecialty: text("clinician_specialty").notNull(),
+  clinicianInstitution: text("clinician_institution").notNull(),
+  clinicianGmcNumber: text("clinician_gmc_number").notNull(),
+  clinicianEmail: text("clinician_email").notNull(),
+  clinicianToken: text("clinician_token").notNull().unique(),
+  clinicianStatus: clinicianVerificationStatus("clinician_status").notNull().default("pending"),
+  clinicianRespondedAt: timestamp("clinician_responded_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("teaching_submissions_profile_idx").on(t.profileId),
+  index("teaching_submissions_status_idx").on(t.status, t.createdAt),
+]);
+
+// Version history: the pre-edit payload is snapshotted on every resubmission
+// against the same record (spec §4.2 review process).
+export const teachingSubmissionRevisions = pgTable("teaching_submission_revisions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  submissionId: uuid("submission_id").notNull()
+    .references(() => teachingSubmissions.id, { onDelete: "cascade" }),
+  payload: text("payload").notNull(), // JSON snapshot of the replaced version
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("teaching_submission_revisions_submission_idx").on(t.submissionId)]);
+
 // -------------- AVAILABLE FOR PROJECTS (reverse board) ---------------
 
 // A user advertising themselves to project listers. One listing per user

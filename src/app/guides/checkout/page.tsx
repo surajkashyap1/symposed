@@ -156,9 +156,10 @@ export default async function GuideCheckoutPage({
             </p>
             <p className="mt-1.5 text-xs text-muted-foreground">
               {displayPence === 0
-                ? "Free as one of our introductory guides — no card needed, nothing to pay."
+                ? "Free — no card needed, nothing to pay."
                 : "Total price. No fees or taxes are added at checkout."}
-              {pricing.introRemainingPublic > 0 &&
+              {displayPence > 0 &&
+                pricing.introRemainingPublic > 0 &&
                 displayPence === pricing.introPricePence &&
                 ` ${pricing.introRemainingPublic} of ${pricing.introQuantity} introductory guides remaining; verified again when you confirm.`}
             </p>

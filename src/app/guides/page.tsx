@@ -47,7 +47,9 @@ export default async function GuidesPage() {
     getPublishedGuideReviews(),
   ]);
   const introActive = pricing.introRemainingPublic > 0;
-  const introFree = pricing.introPricePence === 0;
+  // Free launch mode: guides are simply free — no price, no counter, no
+  // scarcity copy anywhere on the page.
+  const freeMode = introActive && pricing.introPricePence === 0;
 
   return (
     <main className="flex-1">
@@ -62,31 +64,34 @@ export default async function GuidesPage() {
           doable, and builds you a complete methodological foundation for your
           first publication.
         </p>
-        <div className="mt-6 inline-flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-secondary/50 px-4 py-3 text-sm">
-          {introActive ? (
-            <>
+        {/* While guides are free, no pricing or scarcity messaging at all —
+            the banner returns automatically once a real price is set. */}
+        {!freeMode && (
+          <div className="mt-6 inline-flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-secondary/50 px-4 py-3 text-sm">
+            {introActive ? (
+              <>
+                <span className="font-semibold text-foreground">
+                  Introductory price: {formatPounds(pricing.introPricePence)}{" "}
+                  per guide for the first {pricing.introQuantity} guides.
+                </span>
+                <span className="font-medium text-primary">
+                  {pricing.introRemainingPublic} of {pricing.introQuantity}{" "}
+                  remaining.
+                </span>
+                <span className="w-full text-muted-foreground">
+                  After the first {pricing.introQuantity} guides, the price
+                  returns to {formatPounds(pricing.standardPricePence)} per
+                  guide.
+                </span>
+              </>
+            ) : (
               <span className="font-semibold text-foreground">
-                {introFree
-                  ? `Free for the first ${pricing.introQuantity} guides.`
-                  : `Introductory price: ${formatPounds(pricing.introPricePence)} per guide for the first ${pricing.introQuantity} guides.`}
+                {formatPounds(pricing.standardPricePence)} per guide — the
+                total price, nothing added at checkout.
               </span>
-              <span className="font-medium text-primary">
-                {pricing.introRemainingPublic} of {pricing.introQuantity}{" "}
-                remaining.
-              </span>
-              <span className="w-full text-muted-foreground">
-                After the first {pricing.introQuantity} guides, the price{" "}
-                {introFree ? "will be" : "returns to"}{" "}
-                {formatPounds(pricing.standardPricePence)} per guide.
-              </span>
-            </>
-          ) : (
-            <span className="font-semibold text-foreground">
-              {formatPounds(pricing.standardPricePence)} per guide — the total
-              price, nothing added at checkout.
-            </span>
-          )}
-        </div>
+            )}
+          </div>
+        )}
         <div className="mt-6">
           <Link href="/guides/request" className={buttonVariants({ size: "lg" })}>
             Start your guide
@@ -144,45 +149,46 @@ export default async function GuidesPage() {
       </section>
 
       {/* ------------------------------------------------------ price */}
-      <section className="mx-auto w-full max-w-5xl px-6 pb-12">
-        <div className="rounded-lg border p-6 sm:p-8">
-          <h2 className="font-heading text-2xl font-semibold tracking-tight">
-            Price and availability
-          </h2>
-          {introActive ? (
-            <>
+      {!freeMode && (
+        <section className="mx-auto w-full max-w-5xl px-6 pb-12">
+          <div className="rounded-lg border p-6 sm:p-8">
+            <h2 className="font-heading text-2xl font-semibold tracking-tight">
+              Price and availability
+            </h2>
+            {introActive ? (
+              <>
+                <p className="mt-4 text-lg">
+                  <strong>
+                    Introductory price: {formatPounds(pricing.introPricePence)}{" "}
+                    per guide for the first {pricing.introQuantity} guides.
+                  </strong>{" "}
+                  <span className="font-medium text-primary">
+                    {pricing.introRemainingPublic} of {pricing.introQuantity}{" "}
+                    remaining.
+                  </span>
+                </p>
+                <p className="mt-2 text-muted-foreground">
+                  After the first {pricing.introQuantity} guides, the price
+                  returns to {formatPounds(pricing.standardPricePence)} per
+                  guide.
+                </p>
+              </>
+            ) : (
               <p className="mt-4 text-lg">
                 <strong>
-                  {introFree
-                    ? `Free for the first ${pricing.introQuantity} guides.`
-                    : `Introductory price: ${formatPounds(pricing.introPricePence)} per guide for the first ${pricing.introQuantity} guides.`}
-                </strong>{" "}
-                <span className="font-medium text-primary">
-                  {pricing.introRemainingPublic} of {pricing.introQuantity}{" "}
-                  remaining.
-                </span>
+                  {formatPounds(pricing.standardPricePence)} per guide.
+                </strong>
               </p>
-              <p className="mt-2 text-muted-foreground">
-                After the first {pricing.introQuantity} guides, the price{" "}
-                {introFree ? "will be" : "returns to"}{" "}
-                {formatPounds(pricing.standardPricePence)} per guide.
-              </p>
-            </>
-          ) : (
-            <p className="mt-4 text-lg">
-              <strong>
-                {formatPounds(pricing.standardPricePence)} per guide.
-              </strong>
+            )}
+            <p className="mt-3 text-sm text-muted-foreground">
+              The price shown is the total you pay — VAT-inclusive where
+              applicable, with no processing, booking or service fee added at
+              checkout. The counter is real: it only moves when a guide is
+              actually bought.
             </p>
-          )}
-          <p className="mt-3 text-sm text-muted-foreground">
-            The price shown is the total you pay — VAT-inclusive where
-            applicable, with no processing, booking or service fee added at
-            checkout. The counter is real: it only moves when a guide is
-            actually bought.
-          </p>
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
 
       {/* ---------------------------------------------------- reviews */}
       {reviews.length > 0 && (
@@ -281,13 +287,10 @@ export default async function GuidesPage() {
           <p className="mt-2 max-w-xl text-sm text-muted-foreground">
             The proforma takes about five minutes.{" "}
             {introActive &&
-              (introFree
-                ? `${pricing.introRemainingPublic} free ${
-                    pricing.introRemainingPublic === 1 ? "guide" : "guides"
-                  } left.`
-                : `${pricing.introRemainingPublic} discounted ${
-                    pricing.introRemainingPublic === 1 ? "guide" : "guides"
-                  } left at ${formatPounds(pricing.introPricePence)}.`)}
+              !freeMode &&
+              `${pricing.introRemainingPublic} discounted ${
+                pricing.introRemainingPublic === 1 ? "guide" : "guides"
+              } left at ${formatPounds(pricing.introPricePence)}.`}
           </p>
           <Link
             href="/guides/request"

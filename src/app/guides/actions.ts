@@ -281,7 +281,7 @@ async function completeFreeOrder(orderId: string) {
     text: [
       `Hi ${order.fullName},`,
       "",
-      "Your introductory Publication Guide is confirmed — free, as one of our first fifty. Your guide is delivered within 5 working days.",
+      "Your Publication Guide is confirmed. Your guide is delivered within 5 working days.",
       "",
       `A person now researches your topic, verifies that your question is genuinely open, and builds the guide around it. It will appear in "My guides" (${base}/guides/mine) and we'll email you the moment it's ready.`,
       "",

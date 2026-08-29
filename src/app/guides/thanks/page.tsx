@@ -52,7 +52,7 @@ export default async function GuideThanksPage({
                 Thanks, {order.fullName.split(" ")[0]}.{" "}
                 {order.pricePaidPence
                   ? `We've received your payment of ${formatPounds(order.pricePaidPence)}`
-                  : "Your free introductory guide is confirmed"}{" "}
+                  : "Your guide is confirmed"}{" "}
                 and your proforma is with the team. A person now researches
                 your topic, verifies an open question, and builds your guide.{" "}
                 <strong>{DELIVERY_PROMISE}</strong> You&apos;ll get an email

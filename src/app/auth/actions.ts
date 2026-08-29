@@ -3,14 +3,20 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, gt, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { profileCertifications, profiles, profileSkills, skills } from "@/db/schema";
+import {
+  profileCertifications,
+  profiles,
+  profileSkills,
+  skills,
+  verifications,
+} from "@/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ensureProfile, requireUser } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
-import { sendLoginEmailConfirmation } from "@/lib/confirm-email";
+import { sendSignupOtp } from "@/lib/confirm-email";
 import { detectSensitiveInfo, sensitiveInfoMessage } from "@/lib/sensitive-info";
 import {
   computeCompleteness,
@@ -100,24 +106,74 @@ export async function signup(formData: FormData) {
   // If email confirmation is disabled, we get a session immediately.
   if (data.session && data.user) {
     await ensureProfile(data.user);
-    // Supabase autoconfirm is on, so prove the address works app-side
-    // (no-op until Resend is configured).
-    await sendLoginEmailConfirmation(data.user.id, email, origin);
+    // Supabase autoconfirm is on, so we confirm the address ourselves with a
+    // 6-digit OTP before onboarding (no-op send until Resend is configured —
+    // the confirm page then shows the code as a manual fallback).
+    await sendSignupOtp(data.user.id, email);
     revalidatePath("/", "layout");
-    redirect("/onboarding");
+    redirect("/signup/confirm");
   }
 
   // Otherwise the user must click the link in their email.
   redirect("/signup?check=email");
 }
 
+// OTP entry from /signup/confirm. The code is only checked against the
+// signed-in account's own pending verification.
+export async function confirmSignupOtp(formData: FormData) {
+  const user = await requireUser();
+  const code = String(formData.get("code") ?? "").trim();
+  if (!/^\d{6}$/.test(code))
+    redirect(
+      `/signup/confirm?error=${encodeURIComponent("Enter the 6-digit code from your email.")}`
+    );
+
+  const now = new Date();
+  const [row] = await db
+    .select({ id: verifications.id })
+    .from(verifications)
+    .where(
+      and(
+        eq(verifications.profileId, user.id),
+        eq(verifications.type, "login_email"),
+        eq(verifications.status, "pending"),
+        eq(verifications.token, code),
+        gt(verifications.expiresAt, now)
+      )
+    )
+    .limit(1);
+  if (!row)
+    redirect(
+      `/signup/confirm?error=${encodeURIComponent(
+        "That code isn't right or has expired. Check the digits or resend a new code."
+      )}`
+    );
+
+  await db
+    .update(verifications)
+    .set({ status: "verified", verifiedAt: now, token: null })
+    .where(eq(verifications.id, row.id));
+  await db
+    .update(profiles)
+    .set({ emailConfirmedAt: now, updatedAt: now })
+    .where(eq(profiles.id, user.id));
+
+  revalidatePath("/", "layout");
+  redirect("/onboarding?confirmed=1");
+}
+
+export async function resendSignupOtp() {
+  const user = await requireUser();
+  if (!user.email) redirect("/dashboard");
+  await sendSignupOtp(user.id, user.email);
+  redirect("/signup/confirm?resent=1");
+}
+
 export async function resendEmailConfirmation() {
   const user = await requireUser();
   if (!user.email) redirect("/dashboard");
-  const origin =
-    (await headers()).get("origin") ?? process.env.NEXT_PUBLIC_SITE_URL ?? "";
-  await sendLoginEmailConfirmation(user.id, user.email, origin);
-  redirect("/dashboard?confirmation=sent");
+  await sendSignupOtp(user.id, user.email);
+  redirect("/signup/confirm");
 }
 
 export async function requestPasswordReset(formData: FormData) {

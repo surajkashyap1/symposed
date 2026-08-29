@@ -312,6 +312,91 @@ create table contact_messages (
   created_at  timestamptz not null default now()
 );
 
+-- ------------------------ PUBLICATION GUIDES -------------------------
+
+-- Paid, bespoke, human-verified guides (spec §3). Proforma completed before
+-- payment; orders become 'paid' only on the Stripe webhook.
+create type guide_order_status as enum
+  ('submitted', 'paid', 'in_progress', 'delivered', 'refunded');
+
+create table guide_orders (
+  id                       uuid primary key default gen_random_uuid(),
+  profile_id               uuid not null references profiles(id) on delete cascade,
+  proforma                 text not null,   -- full JSON payload
+  full_name                text not null,
+  email                    text not null,
+  status                   guide_order_status not null default 'submitted',
+  discount_applied         boolean not null default false,
+  price_at_checkout_pence  integer,
+  price_paid_pence         integer,
+  checkout_started_at      timestamptz,
+  stripe_session_id        text,
+  stripe_payment_intent_id text,
+  consent_immediate_at     timestamptz,     -- immediate-performance waiver
+  consent_terms_at         timestamptz,
+  consent_ip               text,
+  ip_country               text,            -- location evidence, keep >= 10y
+  billing_country          text,
+  card_country             text,
+  country_mismatch         boolean not null default false,
+  verified_by              text,            -- human-involvement record (§7.5)
+  verified_at              timestamptz,
+  verification_note        text,
+  paid_at                  timestamptz,
+  delivered_at             timestamptz,
+  overdue_alerted_at       timestamptz,
+  review_token             text unique,
+  review_requested_at      timestamptz,
+  created_at               timestamptz not null default now(),
+  updated_at               timestamptz not null default now()
+);
+
+create index guide_orders_profile_idx on guide_orders (profile_id);
+create index guide_orders_status_idx on guide_orders (status, created_at);
+create index guide_orders_session_idx on guide_orders (stripe_session_id);
+
+create table guide_order_files (
+  id           uuid primary key default gen_random_uuid(),
+  order_id     uuid not null references guide_orders(id) on delete cascade,
+  path         text not null,   -- private bucket; authenticated route only
+  filename     text not null,
+  content_type text not null,
+  created_at   timestamptz not null default now()
+);
+
+create index guide_order_files_order_idx on guide_order_files (order_id);
+
+-- Single row (id = 1), admin-editable. Prices are pence and are the TOTAL
+-- payable (DMCC drip-pricing ban).
+create table guide_pricing_config (
+  id                   integer primary key default 1,
+  standard_price_pence integer not null default 4500,
+  intro_price_pence    integer not null default 2500,
+  intro_quantity       integer not null default 10,
+  blocked_countries    text[] not null,  -- ISO alpha-2, default {IN,PK}
+  updated_at           timestamptz not null default now()
+);
+
+create type guide_review_status as enum
+  ('pending', 'approved', 'rejected', 'removed');
+
+create table guide_reviews (
+  id                   uuid primary key default gen_random_uuid(),
+  order_id             uuid references guide_orders(id) on delete set null,
+  reviewer_name        text not null,
+  reviewer_role        text not null,
+  reviewer_institution text,
+  rating               integer not null,
+  body                 text not null,
+  guide_topic          text,
+  complimentary_guide  boolean not null default false,  -- DMCC disclosure badge
+  status               guide_review_status not null default 'pending',
+  published_at         timestamptz,
+  created_at           timestamptz not null default now()
+);
+
+create index guide_reviews_status_idx on guide_reviews (status, published_at);
+
 -- ------------------------ TEACHING PLATFORM --------------------------
 
 -- Commissioned topics on /teach: admin-editable rows, never hardcoded.

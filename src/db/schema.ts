@@ -320,6 +320,108 @@ export const reports = pgTable("reports", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("reports_status_idx").on(t.status, t.createdAt)]);
 
+// ------------------------ PUBLICATION GUIDES -------------------------
+
+// Paid, bespoke, human-verified guides (docs spec §3). The proforma is
+// completed BEFORE payment; an order starts as 'submitted' and only becomes
+// 'paid' on the Stripe webhook (never on the browser redirect).
+export const guideOrderStatus = pgEnum("guide_order_status", [
+  "submitted", "paid", "in_progress", "delivered", "refunded",
+]);
+
+export const guideOrders = pgTable("guide_orders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  profileId: uuid("profile_id").notNull()
+    .references(() => profiles.id, { onDelete: "cascade" }),
+  // Full proforma answers as JSON; fields needed for queries are first-class.
+  proforma: text("proforma").notNull(),
+  fullName: text("full_name").notNull(),
+  email: text("email").notNull(),
+  status: guideOrderStatus("status").notNull().default("submitted"),
+  // Pricing resolved server-side at checkout-session creation. Reservation
+  // (discount_applied + checkout_started_at) is claimed under a row lock on
+  // guide_pricing_config; the public counter counts paid orders only.
+  discountApplied: boolean("discount_applied").notNull().default(false),
+  priceAtCheckoutPence: integer("price_at_checkout_pence"),
+  pricePaidPence: integer("price_paid_pence"),
+  checkoutStartedAt: timestamp("checkout_started_at", { withTimezone: true }),
+  stripeSessionId: text("stripe_session_id"),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  // UK consumer-law consents (spec §3.2): both recorded with timestamp + IP.
+  consentImmediateAt: timestamp("consent_immediate_at", { withTimezone: true }),
+  consentTermsAt: timestamp("consent_terms_at", { withTimezone: true }),
+  consentIp: text("consent_ip"),
+  // Location evidence, retained ≥10 years (spec §7.6). Country is queryable.
+  ipCountry: text("ip_country"),
+  billingCountry: text("billing_country"),
+  cardCountry: text("card_country"),
+  countryMismatch: boolean("country_mismatch").notNull().default(false),
+  // The load-bearing human step (spec §7.5): who verified the guide, when,
+  // and what they changed or checked.
+  verifiedBy: text("verified_by"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  verificationNote: text("verification_note"),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  overdueAlertedAt: timestamp("overdue_alerted_at", { withTimezone: true }),
+  reviewToken: text("review_token").unique(),
+  reviewRequestedAt: timestamp("review_requested_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("guide_orders_profile_idx").on(t.profileId),
+  index("guide_orders_status_idx").on(t.status, t.createdAt),
+  index("guide_orders_session_idx").on(t.stripeSessionId),
+]);
+
+// Delivered files (PDF + editable DOCX + XLSX template) in a private bucket,
+// downloaded only through an authenticated route — the account is the licence.
+export const guideOrderFiles = pgTable("guide_order_files", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orderId: uuid("order_id").notNull()
+    .references(() => guideOrders.id, { onDelete: "cascade" }),
+  path: text("path").notNull(),
+  filename: text("filename").notNull(),
+  contentType: text("content_type").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("guide_order_files_order_idx").on(t.orderId)]);
+
+// Single-row config (id = 1), administrator-editable without a deploy.
+// Prices are pence and are the TOTAL payable — nothing is added at checkout
+// (DMCC drip-pricing ban, spec §7.3).
+export const guidePricingConfig = pgTable("guide_pricing_config", {
+  id: integer("id").primaryKey().default(1),
+  standardPricePence: integer("standard_price_pence").notNull().default(4500),
+  introPricePence: integer("intro_price_pence").notNull().default(2500),
+  introQuantity: integer("intro_quantity").notNull().default(10),
+  // Countries blocked at checkout (ISO 3166-1 alpha-2), admin-editable.
+  blockedCountries: text("blocked_countries").array().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Reviews (spec §3.5): admin-moderated, never edited, complimentary guides
+// disclosed via a badge that cannot be hidden.
+export const guideReviewStatus = pgEnum("guide_review_status", [
+  "pending", "approved", "rejected", "removed",
+]);
+
+export const guideReviews = pgTable("guide_reviews", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // Nullable for admin-created reviews from colleagues outside the payment
+  // flow — those must have complimentary_guide = true.
+  orderId: uuid("order_id").references(() => guideOrders.id, { onDelete: "set null" }),
+  reviewerName: text("reviewer_name").notNull(),
+  reviewerRole: text("reviewer_role").notNull(),
+  reviewerInstitution: text("reviewer_institution"),
+  rating: integer("rating").notNull(),
+  body: text("body").notNull(),
+  guideTopic: text("guide_topic"),
+  complimentaryGuide: boolean("complimentary_guide").notNull().default(false),
+  status: guideReviewStatus("status").notNull().default("pending"),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("guide_reviews_status_idx").on(t.status, t.publishedAt)]);
+
 // ------------------------ TEACHING PLATFORM --------------------------
 
 // Commissioned topics shown on /teach — administrator-editable rows, never

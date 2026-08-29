@@ -62,8 +62,11 @@ export default async function MyGuidesPage() {
                     <div>
                       <p className="font-medium">
                         Publication Guide
-                        {o.pricePaidPence != null &&
-                          ` — ${formatPounds(o.pricePaidPence)}`}
+                        {o.pricePaidPence
+                          ? ` — ${formatPounds(o.pricePaidPence)}`
+                          : o.status !== "submitted"
+                            ? " — free introductory guide"
+                            : ""}
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
                         Ordered {o.createdAt.toLocaleDateString("en-GB")}

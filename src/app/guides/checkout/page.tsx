@@ -2,7 +2,12 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { getOrderForUser, getPricingState } from "@/lib/queries/guides";
-import { DELIVERY_PROMISE, formatPounds, traderInfo } from "@/lib/guides-meta";
+import {
+  DELIVERY_PROMISE,
+  formatPounds,
+  formatPriceLabel,
+  traderInfo,
+} from "@/lib/guides-meta";
 import { startGuideCheckout } from "@/app/guides/actions";
 import { isUuid } from "@/lib/utils";
 import { GuideConsentGate } from "@/components/guide-consent-gate";
@@ -146,14 +151,16 @@ export default async function GuideCheckoutPage({
                 by a person
               </span>
               <span className="text-xl font-semibold">
-                {formatPounds(displayPence)}
+                {formatPriceLabel(displayPence)}
               </span>
             </p>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              Total price. No fees or taxes are added at checkout.
+              {displayPence === 0
+                ? "Free as one of our introductory guides — no card needed, nothing to pay."
+                : "Total price. No fees or taxes are added at checkout."}
               {pricing.introRemainingPublic > 0 &&
                 displayPence === pricing.introPricePence &&
-                ` Introductory price — ${pricing.introRemainingPublic} of ${pricing.introQuantity} remaining; verified again at payment.`}
+                ` ${pricing.introRemainingPublic} of ${pricing.introQuantity} introductory guides remaining; verified again when you confirm.`}
             </p>
           </div>
 
@@ -186,13 +193,19 @@ export default async function GuideCheckoutPage({
             <input type="hidden" name="orderId" value={order.id} />
             <input type="hidden" name="shownPence" value={displayPence} />
             <GuideConsentGate
-              payLabel={`Pay ${formatPounds(displayPence)} securely with Stripe`}
+              payLabel={
+                displayPence === 0
+                  ? "Confirm my free guide"
+                  : `Pay ${formatPounds(displayPence)} securely with Stripe`
+              }
             />
           </form>
-          <p className="text-xs text-muted-foreground">
-            Payment is handled by Stripe on their secure checkout page. Your
-            card details never touch Symposed&apos;s servers.
-          </p>
+          {displayPence > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Payment is handled by Stripe on their secure checkout page. Your
+              card details never touch Symposed&apos;s servers.
+            </p>
+          )}
         </CardContent>
       </Card>
     </main>

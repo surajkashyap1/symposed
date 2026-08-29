@@ -22,7 +22,7 @@ export async function requestVerification(formData: FormData) {
   if (!kind) {
     redirect(
       `/onboarding?verify=${encodeURIComponent(
-        "Enter a .ac.uk or .nhs.uk email address. For other staff emails, contact us."
+        "Enter a university (.edu / .ac.xx) or NHS email address. For other institutional emails, contact us and we'll verify you manually."
       )}#verify`
     );
   }

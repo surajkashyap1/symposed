@@ -68,7 +68,7 @@ export default async function Home() {
                 [
                   UserRound,
                   "Build your profile",
-                  "Say who you are, what you're interested in, and how much time you have. Verify a .ac.uk or NHS email for a trust badge.",
+                  "Say who you are, what you're interested in, and how much time you have. Verify a university or health-service email for a trust badge.",
                 ],
                 [
                   Send,
@@ -140,7 +140,7 @@ export default async function Home() {
             </h2>
             <ul className="mt-4 flex flex-col gap-2.5 text-sm text-muted-foreground">
               {[
-                "Reach motivated students and junior clinicians across the UK",
+                "Reach motivated students and junior clinicians wherever they are",
                 "Applicants come with profiles, reviews and reliability scores",
                 "Application limits mean fewer, better-considered applicants",
                 "Supporting beginners earns you a Research Mentor badge",

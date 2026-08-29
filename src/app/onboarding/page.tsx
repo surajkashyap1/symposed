@@ -277,9 +277,10 @@ export default async function OnboardingPage({
         <CardHeader>
           <CardTitle>Get verified</CardTitle>
           <CardDescription>
-            Verify with a <strong>.ac.uk</strong> or <strong>.nhs.uk</strong>{" "}
-            email to unlock posting projects. You can verify a different address
-            from the one you signed up with.
+            Verify with a university or health-service email (e.g.{" "}
+            <strong>.edu</strong>, <strong>.ac.uk</strong>,{" "}
+            <strong>.nhs.uk</strong>) to unlock posting projects. You can
+            verify a different address from the one you signed up with.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -321,7 +322,7 @@ export default async function OnboardingPage({
               )}
 
               <form action={requestVerification} className="flex flex-col gap-2">
-                <Label htmlFor="verifyEmail">Academic or NHS email</Label>
+                <Label htmlFor="verifyEmail">Academic or health-service email</Label>
                 <Input
                   id="verifyEmail"
                   name="verifyEmail"

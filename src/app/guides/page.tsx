@@ -47,6 +47,7 @@ export default async function GuidesPage() {
     getPublishedGuideReviews(),
   ]);
   const introActive = pricing.introRemainingPublic > 0;
+  const introFree = pricing.introPricePence === 0;
 
   return (
     <main className="flex-1">
@@ -65,16 +66,18 @@ export default async function GuidesPage() {
           {introActive ? (
             <>
               <span className="font-semibold text-foreground">
-                Introductory price: {formatPounds(pricing.introPricePence)} per
-                guide for the first {pricing.introQuantity} guides.
+                {introFree
+                  ? `Free for the first ${pricing.introQuantity} guides.`
+                  : `Introductory price: ${formatPounds(pricing.introPricePence)} per guide for the first ${pricing.introQuantity} guides.`}
               </span>
               <span className="font-medium text-primary">
                 {pricing.introRemainingPublic} of {pricing.introQuantity}{" "}
                 remaining.
               </span>
               <span className="w-full text-muted-foreground">
-                After the first {pricing.introQuantity} guides, the price
-                returns to {formatPounds(pricing.standardPricePence)} per guide.
+                After the first {pricing.introQuantity} guides, the price{" "}
+                {introFree ? "will be" : "returns to"}{" "}
+                {formatPounds(pricing.standardPricePence)} per guide.
               </span>
             </>
           ) : (
@@ -150,8 +153,9 @@ export default async function GuidesPage() {
             <>
               <p className="mt-4 text-lg">
                 <strong>
-                  Introductory price: {formatPounds(pricing.introPricePence)}{" "}
-                  per guide for the first {pricing.introQuantity} guides.
+                  {introFree
+                    ? `Free for the first ${pricing.introQuantity} guides.`
+                    : `Introductory price: ${formatPounds(pricing.introPricePence)} per guide for the first ${pricing.introQuantity} guides.`}
                 </strong>{" "}
                 <span className="font-medium text-primary">
                   {pricing.introRemainingPublic} of {pricing.introQuantity}{" "}
@@ -159,9 +163,9 @@ export default async function GuidesPage() {
                 </span>
               </p>
               <p className="mt-2 text-muted-foreground">
-                After the first {pricing.introQuantity} guides, the price
-                returns to {formatPounds(pricing.standardPricePence)} per
-                guide.
+                After the first {pricing.introQuantity} guides, the price{" "}
+                {introFree ? "will be" : "returns to"}{" "}
+                {formatPounds(pricing.standardPricePence)} per guide.
               </p>
             </>
           ) : (
@@ -277,9 +281,13 @@ export default async function GuidesPage() {
           <p className="mt-2 max-w-xl text-sm text-muted-foreground">
             The proforma takes about five minutes.{" "}
             {introActive &&
-              `${pricing.introRemainingPublic} discounted ${
-                pricing.introRemainingPublic === 1 ? "guide" : "guides"
-              } left at ${formatPounds(pricing.introPricePence)}.`}
+              (introFree
+                ? `${pricing.introRemainingPublic} free ${
+                    pricing.introRemainingPublic === 1 ? "guide" : "guides"
+                  } left.`
+                : `${pricing.introRemainingPublic} discounted ${
+                    pricing.introRemainingPublic === 1 ? "guide" : "guides"
+                  } left at ${formatPounds(pricing.introPricePence)}.`)}
           </p>
           <Link
             href="/guides/request"

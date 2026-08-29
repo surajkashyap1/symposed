@@ -21,7 +21,7 @@ export default function GuidePage() {
       <p>
         Complete your profile so listers can see who you are: your career
         stage, specialty interests, skills and availability. Verifying a
-        .ac.uk or NHS email adds a verified badge that builds trust.
+        university or health-service email adds a verified badge that builds trust.
       </p>
 
       <h2>2. Find projects that fit</h2>

@@ -187,20 +187,6 @@ export async function startGuideCheckout(formData: FormData) {
     null;
   const ipCountry = hdrs.get("x-vercel-ip-country") ?? null;
 
-  // Country allow-list (spec §7.6–7.8): blocked markets get a polite message,
-  // not a broken checkout.
-  const pricing = await getPricingState();
-  if (ipCountry && pricing.blockedCountries.includes(ipCountry))
-    fail("blocked=1");
-
-  if (!stripeConfigured())
-    fail(
-      "error=" +
-        encodeURIComponent(
-          "Payments aren't switched on yet. Please try again soon."
-        )
-    );
-
   // Record consent evidence before charging (spec §3.2: without it the
   // cancellation waiver is worthless).
   const now = new Date();
@@ -222,6 +208,27 @@ export async function startGuideCheckout(formData: FormData) {
   const shownPence = Number.parseInt(String(formData.get("shownPence") ?? ""), 10);
   if (!Number.isNaN(shownPence) && shownPence !== amountPence)
     fail(`priceChanged=${amountPence}`);
+
+  // Free introductory guides (launch mode): no payment to take, so no Stripe
+  // round-trip — the order completes right here, atomically holding its slot.
+  if (amountPence === 0) {
+    await completeFreeOrder(orderId);
+    redirect(`/guides/thanks?order=${orderId}`);
+  }
+
+  // Country allow-list (spec §7.6–7.8) matters only when money moves:
+  // blocked markets get a polite message, not a broken checkout.
+  const pricing = await getPricingState();
+  if (ipCountry && pricing.blockedCountries.includes(ipCountry))
+    fail("blocked=1");
+
+  if (!stripeConfigured())
+    fail(
+      "error=" +
+        encodeURIComponent(
+          "Payments aren't switched on yet. Please try again soon."
+        )
+    );
 
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
   let sessionUrl: string;
@@ -247,4 +254,50 @@ export async function startGuideCheckout(formData: FormData) {
   }
 
   redirect(sessionUrl!);
+}
+
+// Completes a £0 order: same transition and emails as the Stripe webhook,
+// guarded on submitted -> paid so a double-submit can't run twice.
+async function completeFreeOrder(orderId: string) {
+  const updated = await db
+    .update(guideOrders)
+    .set({
+      status: "paid",
+      paidAt: new Date(),
+      pricePaidPence: 0,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(eq(guideOrders.id, orderId), eq(guideOrders.status, "submitted"))
+    )
+    .returning();
+  if (updated.length === 0) return;
+  const order = updated[0];
+
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  await sendEmail({
+    to: order.email,
+    subject: "Symposed: your guide is confirmed and underway",
+    text: [
+      `Hi ${order.fullName},`,
+      "",
+      "Your introductory Publication Guide is confirmed — free, as one of our first fifty. Your guide is delivered within 5 working days.",
+      "",
+      `A person now researches your topic, verifies that your question is genuinely open, and builds the guide around it. It will appear in "My guides" (${base}/guides/mine) and we'll email you the moment it's ready.`,
+      "",
+      "While you wait: your guide ends with a project ready to run. You can already post it on Symposed to recruit collaborators:",
+      `${base}/projects/new`,
+    ].join("\n"),
+  });
+
+  const inbox =
+    process.env.CONTACT_INBOX ??
+    (process.env.ADMIN_EMAILS ?? "").split(",")[0]?.trim();
+  if (inbox) {
+    await sendEmail({
+      to: inbox,
+      subject: `Guide order confirmed (free intro): ${order.fullName}`,
+      text: `Order ${order.id} is confirmed at the free introductory price. The 5-working-day delivery clock is running.\n\n${base}/admin/guides`,
+    });
+  }
 }

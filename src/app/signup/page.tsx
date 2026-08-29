@@ -46,7 +46,7 @@ export default async function SignupPage({
         <CardHeader>
           <CardTitle>Create your account</CardTitle>
           <CardDescription>
-            Tip: sign up with your university (.ac.uk) or NHS email to get verified.
+            Tip: sign up with your university or health-service email to get verified instantly.
           </CardDescription>
         </CardHeader>
         <CardContent>

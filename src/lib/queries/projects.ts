@@ -145,6 +145,7 @@ export async function getProjectById(id: string) {
       ownerUniversity: profiles.university,
       ownerCareerStage: profiles.careerStage,
       ownerVerified: profiles.isVerified,
+      ownerCanSupervise: profiles.canSupervise,
     })
     .from(projects)
     .leftJoin(profiles, eq(profiles.id, projects.ownerId))

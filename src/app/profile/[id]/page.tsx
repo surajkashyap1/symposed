@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ReportContent } from "@/components/report-content";
-import { VerifiedMark } from "@/components/verified-badge";
+import { SupervisorPill, VerifiedMark } from "@/components/verified-badge";
 
 // Tag tints per badge: informational colours, distinct from the claret used
 // on buttons so a tag is never mistaken for an action.
@@ -87,8 +87,9 @@ export default async function PublicProfilePage({
               {profile.university ? ` · ${profile.university}` : ""}
               {profile.specialty ? ` · ${profile.specialty}` : ""}
             </p>
-            {badges.length > 0 && (
+            {(badges.length > 0 || (profile.isVerified && profile.canSupervise)) && (
               <div className="mt-2 flex flex-wrap gap-1.5">
+                {profile.isVerified && profile.canSupervise && <SupervisorPill />}
                 {badges.map((b) => (
                   <Badge
                     key={b.code}

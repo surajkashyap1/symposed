@@ -3,8 +3,11 @@
 -- Apply with: node scripts/apply-sql.mjs drizzle/manual/0006_guides_seed.sql
 -- Safe to re-run.
 
+-- Launch decision (2026-08-29): the first 50 guides are FREE — an intro price
+-- of 0 makes checkout skip Stripe entirely, so payments can be wired up later
+-- without blocking launch. Prices/quantity remain admin-editable on /admin/guides.
 insert into guide_pricing_config (id, standard_price_pence, intro_price_pence, intro_quantity, blocked_countries)
-values (1, 4500, 2500, 10, array['IN', 'PK'])
+values (1, 4500, 0, 50, array['IN', 'PK'])
 on conflict (id) do nothing;
 
 -- No public policies: only the service role reads/writes. Files are served

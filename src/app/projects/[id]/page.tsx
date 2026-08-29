@@ -27,7 +27,7 @@ import { ReportContent } from "@/components/report-content";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { VerifiedMark } from "@/components/verified-badge";
+import { SupervisorPill, VerifiedMark } from "@/components/verified-badge";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -144,15 +144,20 @@ export default async function ProjectDetailPage({
         {project.title}
       </h1>
 
-      <p className="mt-3 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
+      <p className="mt-3 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted-foreground">
         Posted by{" "}
         <Link
           href={`/profile/${project.ownerId}`}
           className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
         >
           {project.ownerName ?? "Unknown"}
-          {project.ownerVerified && <VerifiedMark />}
+          {project.ownerVerified && !project.ownerCanSupervise && (
+            <VerifiedMark />
+          )}
         </Link>
+        {project.ownerVerified && project.ownerCanSupervise && (
+          <SupervisorPill />
+        )}
         {(project.ownerUniversity || ownerRole) && (
           <span>
             · {[ownerRole, project.ownerUniversity].filter(Boolean).join(", ")}

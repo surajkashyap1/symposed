@@ -174,3 +174,9 @@ export function formatPounds(pence: number): string {
     ? `£${pence / 100}`
     : `£${(pence / 100).toFixed(2)}`;
 }
+
+// Launch mode: an introductory price of 0 renders as "Free" and checkout
+// completes without Stripe.
+export function formatPriceLabel(pence: number): string {
+  return pence === 0 ? "Free" : formatPounds(pence);
+}

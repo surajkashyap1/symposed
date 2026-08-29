@@ -98,7 +98,7 @@ export default async function DashboardPage({
           <VerifiedPill />
         ) : (
           <Badge variant="secondary">
-            Unverified. Verify with a .ac.uk or NHS email.
+            Unverified. Verify with a university or health-service email.
           </Badge>
         )}
         {profile.isNewResearcher && (

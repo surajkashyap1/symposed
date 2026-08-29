@@ -9,8 +9,8 @@ import {
 } from "@/components/ui/card";
 
 // Shown to logged-in users who aren't verified when they reach a page that
-// posts/edits projects. Posting is gated to verified accounts (a .ac.uk /
-// .nhs.uk email, confirmed at signup or via the "Get verified" flow).
+// posts/edits projects. Posting is gated to verified accounts (an academic or
+// health-service email, confirmed at signup or via the "Get verified" flow).
 export function SupervisorRequired() {
   return (
     <main className="mx-auto w-full max-w-2xl flex-1 px-6 py-10">
@@ -18,9 +18,11 @@ export function SupervisorRequired() {
         <CardHeader>
           <CardTitle>Verify your account to post</CardTitle>
           <CardDescription>
-            Posting a project requires a verified account. Verify with a{" "}
-            <strong>.ac.uk</strong> or <strong>.nhs.uk</strong> email. You can
-            use a different address from the one you signed up with.
+            Posting a project requires a verified account. Verify with a
+            university or health-service email (e.g. <strong>.edu</strong>,{" "}
+            <strong>.ac.uk</strong>, <strong>.nhs.uk</strong>) — you can use a
+            different address from the one you signed up with. No institutional
+            email? Contact us and we&apos;ll verify you manually.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">

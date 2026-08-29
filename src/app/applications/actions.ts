@@ -5,10 +5,11 @@ import { redirect } from "next/navigation";
 import { and, count, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { applications, projects } from "@/db/schema";
-import { requireUser } from "@/lib/auth";
+import { requireUser, ensureProfile } from "@/lib/auth";
 import { isUuid } from "@/lib/utils";
 import { detectPatientIdentifiers } from "@/lib/sensitive-info";
 import { notify } from "@/lib/notify";
+import { sendEmail } from "@/lib/email";
 import { sendContactExchangeEmails } from "@/lib/contact-exchange";
 import {
   validateApplication,
@@ -132,13 +133,29 @@ export async function submitApplication(formData: FormData) {
     redirectWith(projectId, "You've already applied to this project.");
   }
 
+  // Both sides hear about it (meeting note 2026-08-29): the lister gets the
+  // in-app notification + email via notify(); the applicant gets a
+  // confirmation email directly (notify() would skip them as the actor).
+  const applicant = await ensureProfile(user);
   await notify({
     profileId: project.ownerId,
     actorId: user.id,
     type: "application",
     title: "New application",
-    body: `Someone applied to “${project.title}”.`,
+    body: `${applicant.fullName} applied to “${project.title}”.`,
     link: `/projects/${projectId}/applicants`,
+  });
+  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+  await sendEmail({
+    to: applicant.email,
+    subject: `Symposed: application sent — ${project.title}`,
+    text: [
+      `Hi ${applicant.fullName},`,
+      "",
+      `Your application to “${project.title}” has been sent to the lister. You'll get an email as soon as they respond.`,
+      "",
+      `Track it any time: ${base}/applications`,
+    ].join("\n"),
   });
 
   revalidatePath(`/projects/${projectId}`);

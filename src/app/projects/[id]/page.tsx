@@ -61,10 +61,15 @@ export default async function ProjectDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ error?: string; applied?: string; reported?: string }>;
+  searchParams: Promise<{
+    error?: string;
+    applied?: string;
+    reported?: string;
+    published?: string;
+  }>;
 }) {
   const { id } = await params;
-  const { error, applied, reported } = await searchParams;
+  const { error, applied, reported, published } = await searchParams;
   const project = await getProjectById(id);
   if (!project) notFound();
 
@@ -97,6 +102,17 @@ export default async function ProjectDetailPage({
       {reported && (
         <div className="mt-4 rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
           Thanks — your report has been received and will be reviewed.
+        </div>
+      )}
+      {published && isOwner && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm">
+          <span>Your project is live.</span>
+          <Link
+            href="/available"
+            className="font-medium text-primary hover:underline"
+          >
+            Browse people currently available →
+          </Link>
         </div>
       )}
       {applied && (

@@ -312,6 +312,52 @@ create table contact_messages (
   created_at  timestamptz not null default now()
 );
 
+-- -------------- AVAILABLE FOR PROJECTS (reverse board) ---------------
+
+-- A user advertising themselves to project listers. One listing per user;
+-- editing replaces. Expiry (60 days) is enforced at query time
+-- (status = 'active' and expires_at > now()); renewal emails are best-effort.
+create type availability_listing_status as enum
+  ('active', 'found_project', 'removed');
+
+create table availability_listings (
+  id                    uuid primary key default gen_random_uuid(),
+  profile_id            uuid not null unique references profiles(id) on delete cascade,
+  headline              text not null,
+  display_initials_only boolean not null default false,
+  show_institution      boolean not null default true,
+  region                text,
+  specialties           text,           -- comma-separated, max 3
+  skills                text[] not null, -- values from SKILLS_OFFERED
+  hours_per_week        integer,
+  available_from        date,
+  previous_publications text,
+  looking_for           text not null,
+  status                availability_listing_status not null default 'active',
+  expires_at            timestamptz not null,
+  renewal_emailed_at    timestamptz,
+  found_project_at      timestamptz,
+  created_at            timestamptz not null default now(),
+  updated_at            timestamptz not null default now()
+);
+
+create index availability_listings_board_idx
+  on availability_listings (status, expires_at, updated_at);
+
+-- Relay messages sent to a listing owner ("Get in touch"). Logged both
+-- sides for abuse investigation; email addresses are never exposed.
+create table listing_contacts (
+  id           uuid primary key default gen_random_uuid(),
+  listing_id   uuid not null references availability_listings(id) on delete cascade,
+  sender_id    uuid not null references profiles(id) on delete cascade,
+  recipient_id uuid not null references profiles(id) on delete cascade,
+  body         text not null,
+  created_at   timestamptz not null default now()
+);
+
+create index listing_contacts_sender_time_idx on listing_contacts (sender_id, created_at);
+create index listing_contacts_listing_idx on listing_contacts (listing_id);
+
 -- --------------------- ERROR MONITORING ------------------------------
 
 -- Unhandled server errors captured by instrumentation.onRequestError,

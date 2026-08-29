@@ -11,7 +11,8 @@ export function ReportContent({
   backTo,
   label = "Report",
 }: {
-  targetType: "project" | "question" | "profile" | "review";
+  targetType:
+    | "project" | "question" | "profile" | "review" | "availability_listing";
   targetId: string;
   backTo: string;
   label?: string;

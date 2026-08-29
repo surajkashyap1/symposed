@@ -140,6 +140,15 @@ export default async function ProjectsPage({
         </div>
       )}
 
+      {/* Cross-link to the reverse board (spec §5.4) */}
+      <div className="mt-10 rounded-lg border bg-secondary/50 px-5 py-4 text-sm">
+        Cannot find the right project?{" "}
+        <Link href="/available" className="font-medium text-primary hover:underline">
+          Advertise yourself
+        </Link>{" "}
+        and let listers come to you.
+      </div>
+
       {pageCount > 1 && (
         <nav
           aria-label="Pagination"

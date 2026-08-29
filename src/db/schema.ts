@@ -300,7 +300,7 @@ export const appErrors = pgTable("app_errors", {
 // ------------------------ TRUST & SAFETY -----------------------------
 
 export const reportTargetType = pgEnum("report_target_type", [
-  "project", "question", "profile", "review",
+  "project", "question", "profile", "review", "availability_listing",
 ]);
 
 export const reportStatus = pgEnum("report_status", [
@@ -319,6 +319,62 @@ export const reports = pgTable("reports", {
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("reports_status_idx").on(t.status, t.createdAt)]);
+
+// -------------- AVAILABLE FOR PROJECTS (reverse board) ---------------
+
+// A user advertising themselves to project listers. One listing per user
+// (unique profile_id; editing replaces). Listings auto-expire after 60 days:
+// expiry is enforced at query time (status = 'active' AND expires_at > now())
+// so no cron is required for correctness; the renewal email is best-effort.
+// Expired/removed listings are retained so users can reactivate, and
+// "found_project" records the outcome metric that tells us the board works.
+export const availabilityListingStatus = pgEnum("availability_listing_status", [
+  "active", "found_project", "removed",
+]);
+
+export const availabilityListings = pgTable("availability_listings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  profileId: uuid("profile_id").notNull().unique()
+    .references(() => profiles.id, { onDelete: "cascade" }),
+  headline: text("headline").notNull(),
+  // Privacy: the card can show initials instead of the full name, and the
+  // institution can be withheld. Email addresses are never rendered.
+  displayInitialsOnly: boolean("display_initials_only").notNull().default(false),
+  showInstitution: boolean("show_institution").notNull().default(true),
+  region: text("region"),
+  specialties: text("specialties"), // comma-separated, max 3
+  skills: text("skills").array().notNull(), // values from SKILLS_OFFERED
+  hoursPerWeek: integer("hours_per_week"),
+  availableFrom: date("available_from"),
+  previousPublications: text("previous_publications"),
+  lookingFor: text("looking_for").notNull(),
+  status: availabilityListingStatus("status").notNull().default("active"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  renewalEmailedAt: timestamp("renewal_emailed_at", { withTimezone: true }),
+  foundProjectAt: timestamp("found_project_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("availability_listings_board_idx").on(t.status, t.expiresAt, t.updatedAt),
+]);
+
+// Relay messages sent to a listing owner ("Get in touch"). Both sides are
+// logged for abuse investigation; the owner's email is never exposed.
+export const listingContacts = pgTable("listing_contacts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  listingId: uuid("listing_id").notNull()
+    .references(() => availabilityListings.id, { onDelete: "cascade" }),
+  senderId: uuid("sender_id").notNull()
+    .references(() => profiles.id, { onDelete: "cascade" }),
+  recipientId: uuid("recipient_id").notNull()
+    .references(() => profiles.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  // Supports the 10-per-sender-per-day rate limit lookup.
+  index("listing_contacts_sender_time_idx").on(t.senderId, t.createdAt),
+  index("listing_contacts_listing_idx").on(t.listingId),
+]);
 
 // Contact-form submissions (feedback, complaints, data protection requests).
 // senderId is null for logged-out visitors.

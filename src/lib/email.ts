@@ -6,6 +6,9 @@ export async function sendEmail(input: {
   to: string;
   subject: string;
   text: string;
+  // Relay pattern (e.g. the availability board): replies go to the person
+  // who wrote the message, not to the platform address.
+  replyTo?: string;
 }): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM;
@@ -23,6 +26,7 @@ export async function sendEmail(input: {
         to: input.to,
         subject: input.subject,
         text: input.text,
+        ...(input.replyTo ? { reply_to: input.replyTo } : {}),
       }),
     });
     return res.ok;

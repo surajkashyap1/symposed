@@ -98,7 +98,9 @@ export async function createProject(formData: FormData) {
     .returning({ id: projects.id });
 
   revalidatePath("/projects");
-  redirect(`/projects/${created.id}`);
+  // ?published=1 drives the "browse people currently available" cross-link —
+  // the moment a lister most needs the reverse board.
+  redirect(`/projects/${created.id}?published=1`);
 }
 
 export async function updateProject(formData: FormData) {

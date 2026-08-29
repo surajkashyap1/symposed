@@ -10,6 +10,8 @@
 
 alter table public.app_errors enable row level security;
 alter table public.applications enable row level security;
+alter table public.availability_listings enable row level security;
+alter table public.listing_contacts enable row level security;
 alter table public.contact_messages enable row level security;
 alter table public.badges enable row level security;
 alter table public.conversation_participants enable row level security;

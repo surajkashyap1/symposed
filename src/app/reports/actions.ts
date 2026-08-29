@@ -6,7 +6,9 @@ import { reports } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { isUuid } from "@/lib/utils";
 
-const TARGET_TYPES = new Set(["project", "question", "profile", "review"]);
+const TARGET_TYPES = new Set([
+  "project", "question", "profile", "review", "availability_listing",
+]);
 const MAX_REASON_CHARS = 2000;
 
 // Anyone signed in can report content or conduct (Safety Policy §2).
@@ -29,7 +31,8 @@ export async function submitReport(formData: FormData) {
 
   await db.insert(reports).values({
     reporterId: user.id,
-    targetType: targetType as "project" | "question" | "profile" | "review",
+    targetType: targetType as
+      | "project" | "question" | "profile" | "review" | "availability_listing",
     targetId,
     reason: reason.slice(0, MAX_REASON_CHARS),
   });

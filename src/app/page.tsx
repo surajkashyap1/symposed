@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   Award,
   GraduationCap,
+  Presentation,
   Send,
   ShieldCheck,
   UserRound,
@@ -157,6 +158,77 @@ export default async function Home() {
               className={cn(buttonVariants({ size: "sm" }), "mt-6")}
             >
               Post a project
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------------ guides + the other routes in */}
+      <section className="mx-auto w-full max-w-5xl px-6 pb-14">
+        {/* The revenue product gets the committed surface (spec §6.1). */}
+        <div className="rounded-lg bg-primary p-8 text-primary-foreground sm:p-10">
+          <div className="flex flex-wrap items-end justify-between gap-6">
+            <div className="max-w-xl">
+              <h2 className="font-heading text-2xl font-semibold tracking-tight [text-wrap:balance]">
+                Can&apos;t find a project? Start your own — with a verified
+                question.
+              </h2>
+              <p className="mt-3 text-sm leading-relaxed text-primary-foreground/85">
+                A Publication Guide gives you a research question checked
+                against the literature, a full search strategy, protocol and
+                method walkthrough — researched and verified by a person, built
+                around your interests, delivered within 5 working days.
+              </p>
+            </div>
+            <Link
+              href="/guides"
+              className={cn(
+                buttonVariants({ size: "lg" }),
+                "border border-primary-foreground/20 bg-background text-foreground hover:bg-background/90"
+              )}
+            >
+              Explore Publication Guides
+            </Link>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-6 md:grid-cols-2">
+          <div className="rounded-lg border p-7">
+            <span className="inline-flex size-9 items-center justify-center rounded-md bg-primary/10">
+              <UserRound className="h-5 w-5 text-primary" aria-hidden />
+            </span>
+            <h2 className="mt-4 font-heading text-xl font-semibold tracking-tight">
+              Advertise yourself to listers
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Post a free listing on the People board — your skills, your
+              availability, what you&apos;re looking for — and let project
+              leads come to you.
+            </p>
+            <Link
+              href="/available"
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-5")}
+            >
+              See who&apos;s available
+            </Link>
+          </div>
+          <div className="rounded-lg border p-7">
+            <span className="inline-flex size-9 items-center justify-center rounded-md bg-primary/10">
+              <Presentation className="h-5 w-5 text-primary" aria-hidden />
+            </span>
+            <h2 className="mt-4 font-heading text-xl font-semibold tracking-tight">
+              Teach, and be able to prove it
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              Deliver a live teaching series to a national audience, reviewed
+              by a specialist, with a documented evidence trail of exactly what
+              you taught. Free to create and attend.
+            </p>
+            <Link
+              href="/teach"
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-5")}
+            >
+              Teach on Symposed
             </Link>
           </div>
         </div>

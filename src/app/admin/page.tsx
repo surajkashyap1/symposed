@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { appErrors, contactMessages, listingQuestions, profiles, projects, reports } from "@/db/schema";
-import { requireUser, ensureProfile } from "@/lib/auth";
+import { requireAdmin } from "@/lib/auth";
 import { getMetrics } from "@/lib/queries/metrics";
 import { unpublishProject, removeQuestion, resolveReport } from "@/app/admin/actions";
+import { AdminNav } from "@/components/admin-nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -13,14 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 // separated). If unset, nobody can view it — returns 404 rather than leaking
 // that the page exists.
 export default async function AdminPage() {
-  const user = await requireUser();
-  const profile = await ensureProfile(user);
-  const admins = (process.env.ADMIN_EMAILS ?? "")
-    .toLowerCase()
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (!admins.includes(profile.email.toLowerCase())) notFound();
+  await requireAdmin();
 
   const [m, recentErrors, openReports, recentContact] = await Promise.all([
     getMetrics(),
@@ -60,7 +53,8 @@ export default async function AdminPage() {
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
-      <h1 className="text-2xl font-semibold tracking-tight">Metrics</h1>
+      <AdminNav current="overview" />
+      <h1 className="mt-4 text-2xl font-semibold tracking-tight">Metrics</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Key launch indicators. Visible to admins only.
       </p>

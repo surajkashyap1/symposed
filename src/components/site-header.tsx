@@ -1,10 +1,20 @@
 import Link from "next/link";
-import { Bell, LayoutDashboard, Plus } from "lucide-react";
+import { Bell, ClipboardList, LayoutDashboard, Plus } from "lucide-react";
 import { getSessionUser } from "@/lib/auth";
 import { signOut } from "@/app/auth/actions";
 import { getUnreadNotificationCount } from "@/lib/queries/notifications";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { LogoLockup } from "@/components/logo";
+
+// Four core destinations (spec §6.1): Projects (the board), People
+// (/available), Guides (revenue product), Teaching. Everything else is an
+// icon or lives in the footer to keep the bar breathable.
+const DESTINATIONS = [
+  { href: "/projects", label: "Projects" },
+  { href: "/available", label: "People" },
+  { href: "/guides", label: "Guides" },
+  { href: "/teach", label: "Teaching" },
+] as const;
 
 export async function SiteHeader() {
   const user = await getSessionUser();
@@ -14,30 +24,29 @@ export async function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
-      <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between px-6">
+      <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between gap-3 px-6">
         <Link href="/" className="shrink-0 transition-opacity hover:opacity-70">
           <LogoLockup />
         </Link>
-        <nav className="flex items-center gap-1.5 overflow-x-auto overflow-y-hidden py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
-          <Link
-            href="/about"
-            className={buttonVariants({ variant: "ghost", size: "sm" })}
-          >
-            About
-          </Link>
-          <Link
-            href="/projects"
-            className={buttonVariants({ variant: "ghost", size: "sm" })}
-          >
-            Projects
-          </Link>
+        <nav className="flex items-center gap-1 overflow-x-auto overflow-y-hidden py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0">
+          {DESTINATIONS.map((d) => (
+            <Link
+              key={d.href}
+              href={d.href}
+              className={buttonVariants({ variant: "ghost", size: "sm" })}
+            >
+              {d.label}
+            </Link>
+          ))}
           {user ? (
             <>
               <Link
                 href="/applications"
-                className={buttonVariants({ variant: "ghost", size: "sm" })}
+                aria-label="My applications"
+                title="My applications"
+                className={buttonVariants({ variant: "ghost", size: "icon" })}
               >
-                Applications
+                <ClipboardList className="size-4.5" aria-hidden />
               </Link>
               <Link
                 href="/notifications"
@@ -65,7 +74,7 @@ export async function SiteHeader() {
               </Link>
               <Link
                 href="/projects/new"
-                className={buttonVariants({ size: "sm", className: "gap-1" })}
+                className={buttonVariants({ size: "sm", className: "ml-1 gap-1" })}
               >
                 <Plus className="size-3.5" aria-hidden />
                 Post a project

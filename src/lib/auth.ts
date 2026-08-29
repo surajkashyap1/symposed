@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import type { User } from "@supabase/supabase-js";
 import { db } from "@/db";
@@ -79,6 +79,20 @@ export async function requirePoster(): Promise<{
   const user = await requireUser();
   const profile = await ensureProfile(user);
   if (!profile.isVerified) redirect("/projects/new");
+  return { user, profile };
+}
+
+// Admin access is gated by the ADMIN_EMAILS env var (comma-separated).
+// Unset = nobody; non-admins get 404 rather than a hint the page exists.
+export async function requireAdmin(): Promise<{ user: User; profile: Profile }> {
+  const user = await requireUser();
+  const profile = await ensureProfile(user);
+  const admins = (process.env.ADMIN_EMAILS ?? "")
+    .toLowerCase()
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!admins.includes(profile.email.toLowerCase())) notFound();
   return { user, profile };
 }
 

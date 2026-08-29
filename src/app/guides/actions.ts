@@ -7,6 +7,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { guideOrders } from "@/db/schema";
 import { requireUser, ensureProfile } from "@/lib/auth";
+import { sendEmail } from "@/lib/email";
 import { isUuid } from "@/lib/utils";
 import {
   DATABASE_OPTIONS,
@@ -136,6 +137,21 @@ export async function submitGuideProforma(formData: FormData) {
       })
       .returning({ id: guideOrders.id });
     orderId = created.id;
+
+    // "Proforma received" (spec §6.3): sets expectations and restates the
+    // 5-working-day turnaround from payment.
+    const base = process.env.NEXT_PUBLIC_SITE_URL ?? "";
+    await sendEmail({
+      to: email,
+      subject: "Symposed: we've got your guide request",
+      text: [
+        `Hi ${fullName},`,
+        "",
+        "Thanks — we've received your proforma. Nothing has been charged yet: the next step is reviewing your summary and paying, after which your guide is delivered within 5 working days.",
+        "",
+        `Pick up where you left off any time: ${base}/guides/checkout?order=${orderId}`,
+      ].join("\n"),
+    });
   }
 
   redirect(`/guides/checkout?order=${orderId}`);

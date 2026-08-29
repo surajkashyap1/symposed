@@ -1,15 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
-  BookOpen,
   Briefcase,
   CalendarDays,
-  ClipboardList,
-  FileText,
   GraduationCap,
-  HelpCircle,
-  Presentation,
-  Search,
   Stethoscope,
   UserPlus,
   Users,
@@ -33,20 +27,9 @@ import { ReportContent } from "@/components/report-content";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { VerifiedMark } from "@/components/verified-badge";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
-
-const TYPE_ICONS: Record<string, Icon> = {
-  audit: ClipboardList,
-  systematic_review: Search,
-  literature_review: BookOpen,
-  case_study: FileText,
-  retrospective: BookOpen,
-  prospective_study: ClipboardList,
-  poster: Presentation,
-  teaching: GraduationCap,
-  other: HelpCircle,
-};
 
 function careerStageLabel(value: string | null) {
   if (!value) return null;
@@ -57,16 +40,14 @@ function DetailField({
   icon: IconComponent,
   label,
   value,
-  className,
 }: {
   icon: Icon;
   label: string;
   value: ReactNode;
-  className: string;
 }) {
   return (
-    <div className={`rounded-md border px-3 py-2 ${className}`}>
-      <p className="flex items-center gap-1.5 text-xs font-medium">
+    <div>
+      <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
         <IconComponent className="h-3.5 w-3.5" aria-hidden />
         {label}
       </p>
@@ -91,7 +72,6 @@ export default async function ProjectDetailPage({
   const isOwner = user?.id === project.ownerId;
   // Drafts are not public listings — only the owner can view them.
   if (project.status === "draft" && !isOwner) notFound();
-  const ProjectTypeIcon = TYPE_ICONS[project.projectType] ?? HelpCircle;
   const ownerRole = careerStageLabel(project.ownerCareerStage);
 
   const [myApplication, allowance, questions] = await Promise.all([
@@ -129,102 +109,90 @@ export default async function ProjectDetailPage({
         </div>
       )}
 
-      <div className="mt-4 flex items-start justify-between gap-4">
-        <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight">
-          {project.title}
-        </h1>
-        {project.status !== "open" && (
-          <Badge variant="secondary" className="shrink-0 capitalize">
-            {project.status.replace("_", " ")}
-          </Badge>
-        )}
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      {/* --- Header: what it is, who posted it ------------------------- */}
+      <div className="mt-5 flex flex-wrap items-center gap-1.5">
         {project.isBeginnerFriendly && (
           <Badge className="border-transparent bg-success text-success-foreground">
             Beginner friendly
           </Badge>
         )}
         <Badge variant="secondary">{projectTypeLabel(project.projectType)}</Badge>
-        <Badge variant="outline">{experienceLabel(project.experienceLevel)}</Badge>
-        {project.specialty && <Badge variant="outline">{project.specialty}</Badge>}
-        {project.roleCategory && (
-          <Badge variant="outline">{project.roleCategory}</Badge>
+        {project.status !== "open" && (
+          <Badge variant="outline" className="capitalize">
+            {project.status.replace("_", " ")}
+          </Badge>
         )}
       </div>
 
-      <p className="mt-6 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-        {project.description}
+      <h1 className="mt-3 min-w-0 break-words text-3xl font-semibold tracking-tight">
+        {project.title}
+      </h1>
+
+      <p className="mt-3 flex flex-wrap items-center gap-x-1.5 text-sm text-muted-foreground">
+        Posted by{" "}
+        <Link
+          href={`/profile/${project.ownerId}`}
+          className="inline-flex items-center gap-1 font-medium text-foreground hover:underline"
+        >
+          {project.ownerName ?? "Unknown"}
+          {project.ownerVerified && <VerifiedMark />}
+        </Link>
+        {(project.ownerUniversity || ownerRole) && (
+          <span>
+            · {[ownerRole, project.ownerUniversity].filter(Boolean).join(", ")}
+          </span>
+        )}
       </p>
 
-      <Card className="mt-8">
-        <CardContent className="grid gap-3 text-sm sm:grid-cols-2">
-          <DetailField
-            icon={ProjectTypeIcon}
-            label="Project type"
-            value={projectTypeLabel(project.projectType)}
-            className="border-sky-200 bg-sky-50 dark:border-sky-900/60 dark:bg-sky-950/40"
-          />
+      {/* --- Key facts: one quiet strip, no competing colour ------------ */}
+      <Card className="mt-6">
+        <CardContent className="grid grid-cols-2 gap-x-4 gap-y-5 text-sm sm:grid-cols-3">
           <DetailField
             icon={GraduationCap}
             label="Experience level"
             value={experienceLabel(project.experienceLevel)}
-            className="border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/40"
           />
           <DetailField
             icon={Stethoscope}
             label="Specialty"
             value={project.specialty ?? "Not set"}
-            className="border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/40"
           />
           <DetailField
             icon={Briefcase}
             label="Role"
             value={project.roleCategory ?? "Not set"}
-            className="border-violet-200 bg-violet-50 dark:border-violet-900/60 dark:bg-violet-950/40"
-          />
-          <DetailField
-            icon={Users}
-            label="Applications"
-            value={project.applicationCount}
-            className="border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900"
           />
           <DetailField
             icon={UserPlus}
             label="Positions"
             value={project.positionsAvailable}
-            className="border-teal-200 bg-teal-50 dark:border-teal-900/60 dark:bg-teal-950/40"
+          />
+          <DetailField
+            icon={Users}
+            label="Applications"
+            value={project.applicationCount}
           />
           <DetailField
             icon={CalendarDays}
-            label="Application deadline"
+            label="Apply by"
             value={
               project.applicationDeadline
                 ? formatDateUK(project.applicationDeadline)
-                : "Not set"
+                : "No deadline"
             }
-            className="border-rose-200 bg-rose-50 dark:border-rose-900/60 dark:bg-rose-950/40"
-          />
-          <DetailField
-            icon={Briefcase}
-            label="Posted by"
-            value={
-              <Link href={`/profile/${project.ownerId}`} className="hover:underline">
-                {project.ownerName ?? "Unknown"}
-                {project.ownerUniversity ? `, ${project.ownerUniversity}` : ""}
-                {ownerRole ? `, ${ownerRole}` : ""}
-                {project.ownerVerified && (
-                  <span className="ml-1 text-success" title="Verified">
-                    ✓
-                  </span>
-                )}
-              </Link>
-            }
-            className="border-indigo-200 bg-indigo-50 dark:border-indigo-900/60 dark:bg-indigo-950/40"
           />
         </CardContent>
       </Card>
+
+      {/* --- The listing itself ---------------------------------------- */}
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold tracking-tight">
+          About this project
+        </h2>
+        <p className="mt-3 max-w-[70ch] whitespace-pre-wrap text-[15px] leading-7 text-foreground">
+          {project.description}
+        </p>
+      </section>
 
       {/* Owner controls */}
       {isOwner ? (

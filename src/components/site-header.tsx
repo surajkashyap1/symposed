@@ -1,8 +1,8 @@
 import Link from "next/link";
+import { Bell, LayoutDashboard, Plus } from "lucide-react";
 import { getSessionUser } from "@/lib/auth";
 import { signOut } from "@/app/auth/actions";
 import { getUnreadNotificationCount } from "@/lib/queries/notifications";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { LogoLockup } from "@/components/logo";
 
@@ -42,20 +42,33 @@ export async function SiteHeader() {
               <Link
                 href="/notifications"
                 aria-label={`Notifications${unreadNotifications > 0 ? ` (${unreadNotifications} unread)` : ""}`}
-                className={`relative ${buttonVariants({ variant: "ghost", size: "sm" })}`}
+                title="Notifications"
+                className={`relative ${buttonVariants({ variant: "ghost", size: "icon" })}`}
               >
-                Notifications
+                <Bell className="size-4.5" aria-hidden />
                 {unreadNotifications > 0 && (
-                  <Badge className="ml-1.5 border-transparent bg-primary px-1.5 text-primary-foreground">
-                    {unreadNotifications}
-                  </Badge>
+                  <span
+                    aria-hidden
+                    className="absolute right-1 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground"
+                  >
+                    {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                  </span>
                 )}
               </Link>
               <Link
                 href="/dashboard"
-                className={buttonVariants({ variant: "ghost", size: "sm" })}
+                aria-label="Dashboard"
+                title="Dashboard"
+                className={buttonVariants({ variant: "ghost", size: "icon" })}
               >
-                Dashboard
+                <LayoutDashboard className="size-4.5" aria-hidden />
+              </Link>
+              <Link
+                href="/projects/new"
+                className={buttonVariants({ size: "sm", className: "gap-1" })}
+              >
+                <Plus className="size-3.5" aria-hidden />
+                Post a project
               </Link>
               <form action={signOut}>
                 <Button variant="outline" size="sm" type="submit">

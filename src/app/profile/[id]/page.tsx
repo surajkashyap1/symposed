@@ -12,6 +12,18 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { ReportContent } from "@/components/report-content";
+import { VerifiedMark } from "@/components/verified-badge";
+
+// Tag tints per badge: informational colours, distinct from the claret used
+// on buttons so a tag is never mistaken for an action.
+const BADGE_TAG_CLASS: Record<string, string> = {
+  new_researcher:
+    "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300",
+  research_mentor:
+    "border-success/30 bg-success/10 text-success",
+  project_lead:
+    "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300",
+};
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -68,17 +80,28 @@ export default async function PublicProfilePage({
           <div>
             <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
               {profile.fullName}
-              {profile.isVerified && (
-                <span className="text-success" title="Verified">
-                  ✓
-                </span>
-              )}
+              {profile.isVerified && <VerifiedMark className="text-xl" />}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {stageLabel}
               {profile.university ? ` · ${profile.university}` : ""}
               {profile.specialty ? ` · ${profile.specialty}` : ""}
             </p>
+            {badges.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {badges.map((b) => (
+                  <Badge
+                    key={b.code}
+                    variant="outline"
+                    title={b.description ?? undefined}
+                    className={`${BADGE_TAG_CLASS[b.code] ?? ""} ${b.active ? "" : "opacity-60"}`}
+                  >
+                    {b.name}
+                    {!b.active && " (past)"}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         {isSelf && (
@@ -167,23 +190,6 @@ export default async function PublicProfilePage({
             ))}
           </ul>
         </section>
-      )}
-
-      {/* Badges */}
-      {badges.length > 0 && (
-        <div className="mt-6 flex flex-wrap gap-2">
-          {badges.map((b) => (
-            <Badge
-              key={b.code}
-              variant={b.active ? "default" : "outline"}
-              title={b.description ?? undefined}
-              className={b.active ? "" : "opacity-60"}
-            >
-              {b.name}
-              {!b.active && " (past)"}
-            </Badge>
-          ))}
-        </div>
       )}
 
       {/* Ratings */}

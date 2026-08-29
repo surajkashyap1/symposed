@@ -1,8 +1,14 @@
 import Link from "next/link";
-import { GraduationCap, ShieldCheck, Users } from "lucide-react";
+import {
+  Award,
+  GraduationCap,
+  Send,
+  ShieldCheck,
+  UserRound,
+  Users,
+} from "lucide-react";
 import { getSessionUser } from "@/lib/auth";
 import { buttonVariants } from "@/components/ui/button";
-import { LogoMark } from "@/components/logo";
 import { cn } from "@/lib/utils";
 
 const PROJECT_TYPES: [string, string][] = [
@@ -18,16 +24,8 @@ export default async function Home() {
   return (
     <main className="flex-1">
       {/* ---------------------------------------------------------- hero */}
-      <section className="relative mx-auto w-full max-w-5xl overflow-hidden px-6 pt-16 pb-16 sm:pt-24">
-        {/* Ambient brand mark: decorative only, clipped by the section. */}
-        <LogoMark
-          height={300}
-          className="pointer-events-none absolute right-0 top-16 hidden text-primary/[0.05] lg:block"
-        />
-        <span className="inline-flex w-fit items-center gap-2 rounded-full border bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-          UK · students &amp; healthcare professionals
-        </span>
-        <h1 className="mt-6 max-w-3xl font-heading text-4xl font-semibold leading-tight tracking-tight text-foreground [text-wrap:balance] sm:text-5xl">
+      <section className="mx-auto w-full max-w-5xl px-6 pt-16 pb-16 sm:pt-24">
+        <h1 className="max-w-3xl font-heading text-4xl font-semibold leading-tight tracking-tight text-foreground [text-wrap:balance] sm:text-5xl">
           Your first publication{" "}
           <span className="text-primary">starts here.</span>
         </h1>
@@ -64,28 +62,30 @@ export default async function Home() {
             How it works
           </h2>
           <ol className="mt-8 grid gap-8 sm:grid-cols-3">
-            {[
+            {(
               [
-                "Build your profile",
-                "Say who you are, what you're interested in, and how much time you have. Verify a .ac.uk or NHS email for a trust badge.",
-              ],
-              [
-                "Apply to a project",
-                "Filter by specialty, type and experience level. A capped number of applications per week keeps every application meaningful.",
-              ],
-              [
-                "Deliver and be cited",
-                "Do the work, collect a review from your supervisor, and carry a verified track record into your next application.",
-              ],
-            ].map(([title, body], i) => (
+                [
+                  UserRound,
+                  "Build your profile",
+                  "Say who you are, what you're interested in, and how much time you have. Verify a .ac.uk or NHS email for a trust badge.",
+                ],
+                [
+                  Send,
+                  "Apply to a project",
+                  "Filter by specialty, type and experience level. A capped number of applications per week keeps every application meaningful.",
+                ],
+                [
+                  Award,
+                  "Deliver and be cited",
+                  "Do the work, collect a review from your supervisor, and carry a verified track record into your next application.",
+                ],
+              ] as const
+            ).map(([StepIcon, title, body]) => (
               <li key={title}>
-                <span
-                  aria-hidden
-                  className="font-heading text-3xl font-semibold text-primary/40"
-                >
-                  {i + 1}
+                <span className="inline-flex size-9 items-center justify-center rounded-md bg-primary/10">
+                  <StepIcon className="h-5 w-5 text-primary" aria-hidden />
                 </span>
-                <h3 className="mt-2 text-sm font-semibold text-foreground">
+                <h3 className="mt-3 text-sm font-semibold text-foreground">
                   {title}
                 </h3>
                 <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
@@ -100,7 +100,7 @@ export default async function Home() {
       {/* -------------------------------------------------- two audiences */}
       <section className="mx-auto w-full max-w-5xl px-6 py-14">
         <div className="grid gap-6 md:grid-cols-2">
-          <div className="rounded-lg bg-primary/[0.05] p-7">
+          <div className="rounded-lg border p-7">
             <span className="inline-flex size-9 items-center justify-center rounded-md bg-primary/10">
               <GraduationCap className="h-5 w-5 text-primary" aria-hidden />
             </span>
@@ -154,7 +154,7 @@ export default async function Home() {
             </ul>
             <Link
               href={user ? "/projects/new" : "/signup"}
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-6")}
+              className={cn(buttonVariants({ size: "sm" }), "mt-6")}
             >
               Post a project
             </Link>
@@ -189,33 +189,31 @@ export default async function Home() {
       </section>
 
       {/* ------------------------------------------- statement + close */}
-      <section className="relative overflow-hidden border-y border-ink-foreground/10 bg-ink text-ink-foreground">
-        <LogoMark
-          height={300}
-          className="pointer-events-none absolute -right-10 -bottom-24 hidden text-ink-foreground/[0.05] md:block"
-        />
-        <div className="mx-auto w-full max-w-5xl px-6 py-16">
-          <div className="flex items-center gap-2 text-ink-foreground/70">
-            <ShieldCheck className="h-4 w-4" aria-hidden />
-            <span className="text-sm">Built on verified trust</span>
-          </div>
-          <p className="mt-4 max-w-2xl font-heading text-2xl font-medium leading-snug [text-wrap:balance] sm:text-3xl">
-            Posters verify institutional emails. Reviews come only from
-            completed projects. No patient data, anywhere.
-          </p>
-          <p className="mt-3 max-w-xl text-sm leading-relaxed text-ink-foreground/70">
-            Free for everyone, enforced automatically and by policy.
-          </p>
-          {!user && (
+      {/* A closing sales pitch: only shown to visitors who can still act on it.
+          Signed-in users otherwise see a dark band with no purpose. */}
+      {!user && (
+        <section className="border-y border-ink-foreground/10 bg-ink text-ink-foreground">
+          <div className="mx-auto w-full max-w-5xl px-6 py-16">
+            <div className="flex items-center gap-2 text-ink-foreground/70">
+              <ShieldCheck className="h-4 w-4" aria-hidden />
+              <span className="text-sm">Built on verified trust</span>
+            </div>
+            <p className="mt-4 max-w-2xl font-heading text-2xl font-medium leading-snug [text-wrap:balance] sm:text-3xl">
+              Posters verify institutional emails. Reviews come only from
+              completed projects. No patient data, anywhere.
+            </p>
+            <p className="mt-3 max-w-xl text-sm leading-relaxed text-ink-foreground/70">
+              Free for everyone, enforced automatically and by policy.
+            </p>
             <Link
               href="/signup"
               className={cn(buttonVariants({ size: "lg" }), "mt-8")}
             >
               Join Symposed
             </Link>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

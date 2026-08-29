@@ -6,6 +6,7 @@ import { getProjectsByOwner } from "@/lib/queries/projects";
 import { getProfileCertifications, getProfileSkills } from "@/lib/queries/profiles";
 import { resendEmailConfirmation } from "@/app/auth/actions";
 import { ProjectCard } from "@/components/project-card";
+import { VerifiedPill } from "@/components/verified-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -94,16 +95,19 @@ export default async function DashboardPage({
       {/* Verification + status badges */}
       <div className="mt-6 flex flex-wrap gap-2">
         {profile.isVerified ? (
-          <Badge className="border-transparent bg-success text-success-foreground">
-            ✓ Verified
-          </Badge>
+          <VerifiedPill />
         ) : (
           <Badge variant="secondary">
             Unverified. Verify with a .ac.uk or NHS email.
           </Badge>
         )}
         {profile.isNewResearcher && (
-          <Badge variant="secondary">New researcher</Badge>
+          <Badge
+            variant="outline"
+            className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+          >
+            New researcher
+          </Badge>
         )}
       </div>
 

@@ -73,8 +73,62 @@ export function LogoMark({
   );
 }
 
+// The favicon composition as an inline component: paper mark on a claret
+// tile. Reads far crisper at header sizes than the bare mark on paper, and
+// matches the browser-tab / app icon so the brand is one mark everywhere.
+// Brand constants (not theme tokens) so it never flips with dark mode.
+export function LogoTile({
+  size = 28,
+  className,
+}: {
+  size?: number;
+  className?: string;
+}) {
+  const id = useId();
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 64 64"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden
+      className={className}
+    >
+      <defs>
+        <mask id={id}>
+          <rect width="64" height="64" fill="white" />
+          <g transform="translate(11.52 6.28) scale(0.64)">
+            <path d={S_PATH} fill="black" stroke="black" strokeWidth={3.8} />
+          </g>
+        </mask>
+      </defs>
+      <rect width="64" height="64" rx="14" fill="var(--color-brand)" />
+      <g
+        transform="translate(5.6 5.24) scale(2.2)"
+        stroke="var(--color-brand-foreground)"
+        strokeWidth={2.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+        mask={`url(#${id})`}
+      >
+        <path d={BOOK_LEFT} />
+        <path d={BOOK_RIGHT} />
+      </g>
+      <g transform="translate(11.52 6.28) scale(0.64)">
+        <path
+          d={S_PATH}
+          fill="var(--color-brand-foreground)"
+          stroke="var(--color-brand-foreground)"
+          strokeWidth={1.15}
+        />
+      </g>
+    </svg>
+  );
+}
+
 export function LogoLockup({
-  markHeight = 24,
+  markHeight = 26,
   textClassName = "text-xl",
   tone = "default",
 }: {
@@ -83,12 +137,15 @@ export function LogoLockup({
   /** "oncolor" renders the whole lockup in cream, for claret surfaces. */
   tone?: "default" | "oncolor";
 }) {
-  const markClass = tone === "oncolor" ? "text-brand-foreground" : "text-primary";
   const wordClass =
     tone === "oncolor" ? "text-brand-foreground" : "text-foreground";
   return (
     <span className="inline-flex items-center gap-2">
-      <LogoMark height={markHeight} className={markClass} />
+      {tone === "oncolor" ? (
+        <LogoMark height={markHeight} className="text-brand-foreground" />
+      ) : (
+        <LogoTile size={markHeight + 2} />
+      )}
       <span
         className={`font-heading font-semibold tracking-tight ${wordClass} ${textClassName}`}
       >

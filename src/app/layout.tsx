@@ -4,6 +4,7 @@ import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { CookieBanner } from "@/components/cookie-banner";
+import { AttributionBeacon } from "@/components/attribution-beacon";
 
 // Humanist sans carries all UI: body, buttons, labels, data.
 const sans = Hanken_Grotesk({
@@ -41,6 +42,7 @@ export default function RootLayout({
         {children}
         <SiteFooter />
         <CookieBanner />
+        <AttributionBeacon />
       </body>
     </html>
   );

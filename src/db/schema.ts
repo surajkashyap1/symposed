@@ -98,6 +98,13 @@ export const profiles = pgTable("profiles", {
   preferredProjectTypes: text("preferred_project_types"),
   preferredSpecialties: text("preferred_specialties"),
   profileCompleteness: integer("profile_completeness").notNull().default(0),
+  // Amendment §9: the channel the user first arrived through, captured on
+  // first visit (cookie) and written here once at signup. First touch wins;
+  // an unknown/missing code is recorded as "direct".
+  refCode: text("ref_code"),
+  // Amendment §8.5: opt-out for the "publish your listing" nudge emails only,
+  // kept separate from transactional email.
+  listingNudgeOptOut: boolean("listing_nudge_opt_out").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -157,12 +164,19 @@ export const projects = pgTable("projects", {
   positionsAvailable: integer("positions_available").notNull().default(1),
   status: projectStatus("status").notNull().default("open"),
   applicationDeadline: date("application_deadline"),
+  // Amendment §8.4: a project auto-drafted from a delivered guide links back to
+  // its order. Guide-sourced listings get priority placement (§8.7) and mark
+  // the owner as a "guide lister" for the credit tier (§8.9). Set null keeps
+  // the listing if the order row is ever removed.
+  sourceGuideOrderId: uuid("source_guide_order_id")
+    .references(() => guideOrders.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("projects_status_idx").on(t.status),
   index("projects_experience_idx").on(t.experienceLevel),
   index("projects_specialty_idx").on(t.specialty),
+  index("projects_source_guide_idx").on(t.sourceGuideOrderId),
 ]);
 
 // ------------------------- APPLICATIONS ------------------------------
@@ -364,6 +378,11 @@ export const guideOrders = pgTable("guide_orders", {
   paidAt: timestamp("paid_at", { withTimezone: true }),
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   overdueAlertedAt: timestamp("overdue_alerted_at", { withTimezone: true }),
+  // Amendment §8.5: the two "publish your listing" nudges (10 and 30 calendar
+  // days after delivery). Never more than two, and only while no listing has
+  // been published from this guide.
+  listingNudge10At: timestamp("listing_nudge_10_at", { withTimezone: true }),
+  listingNudge30At: timestamp("listing_nudge_30_at", { withTimezone: true }),
   reviewToken: text("review_token").unique(),
   reviewRequestedAt: timestamp("review_requested_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -389,11 +408,21 @@ export const guideOrderFiles = pgTable("guide_order_files", {
 // Single-row config (id = 1), administrator-editable without a deploy.
 // Prices are pence and are the TOTAL payable — nothing is added at checkout
 // (DMCC drip-pricing ban, spec §7.3).
+// Amendment §2 — a three-band price ladder, all quantities and prices
+// administrator-configurable (nothing hardcoded):
+//   1. the first `free_quantity` guides are free (£0);
+//   2. the next `intro_quantity` guides are `intro_price_pence` (the £25 tier);
+//   3. thereafter, `standard_price_pence` (£45).
+// `payments_enabled` is the launch toggle: while OFF, the checkout step is
+// skipped and every request goes straight to the queue at no charge, even
+// though the full Stripe path is built.
 export const guidePricingConfig = pgTable("guide_pricing_config", {
   id: integer("id").primaryKey().default(1),
   standardPricePence: integer("standard_price_pence").notNull().default(4500),
   introPricePence: integer("intro_price_pence").notNull().default(2500),
-  introQuantity: integer("intro_quantity").notNull().default(10),
+  introQuantity: integer("intro_quantity").notNull().default(25),
+  freeQuantity: integer("free_quantity").notNull().default(25),
+  paymentsEnabled: boolean("payments_enabled").notNull().default(false),
   // Countries blocked at checkout (ISO 3166-1 alpha-2), admin-editable.
   blockedCountries: text("blocked_countries").array().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -467,7 +496,7 @@ export const teachingSubmissions = pgTable("teaching_submissions", {
   applicantGmcNumber: text("applicant_gmc_number"),
   title: text("title").notNull(),
   description: text("description").notNull(),
-  learningObjectives: text("learning_objectives").array().notNull(), // 3–5
+  learningObjectives: text("learning_objectives").array().notNull(), // 3 to 5
   targetAudience: text("target_audience").array().notNull(),
   sessionsPlan: text("sessions_plan").notNull(), // number of sessions + duration
   deliveryFormat: teachingDeliveryFormat("delivery_format").notNull(),
@@ -571,3 +600,59 @@ export const contactMessages = pgTable("contact_messages", {
   message: text("message").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// --------------- PLATFORM CONFIG (member benefits, §8) ----------------
+
+// Single-row config (id = 1), administrator-editable without a deploy. Holds
+// the tunables the amendment insists stay configurable: the application credit
+// tiers (§8.9), the bounded direct-support allowance (§8.8) and the optional
+// 14-day vesting flag for benefits (§8.7, off initially).
+export const platformConfig = pgTable("platform_config", {
+  id: integer("id").primaryKey().default(1),
+  // §8.9 weekly application credits by member type.
+  creditsStandard: integer("credits_standard").notNull().default(3),
+  creditsLister: integer("credits_lister").notNull().default(6),
+  creditsGuideLister: integer("credits_guide_lister").notNull().default(9),
+  // §8.8 bounded direct support.
+  supportAllowance: integer("support_allowance").notNull().default(3),
+  supportResponseDays: integer("support_response_days").notNull().default(7),
+  // §8.7 optional anti-gaming: benefits vest only after a listing has been live
+  // this many days. 0 = off (the launch default).
+  vestListingDays: integer("vest_listing_days").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Bounded direct-support questions (§8.8). One row per question; the allowance
+// is enforced in app logic by counting a user's rows against platform_config.
+export const supportQuestions = pgTable("support_questions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  profileId: uuid("profile_id").notNull()
+    .references(() => profiles.id, { onDelete: "cascade" }),
+  orderId: uuid("order_id").references(() => guideOrders.id, { onDelete: "set null" }),
+  question: text("question").notNull(),
+  answer: text("answer"),
+  answeredAt: timestamp("answered_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("support_questions_profile_idx").on(t.profileId, t.createdAt)]);
+
+// ------------------- CHANNEL ATTRIBUTION (§9) ------------------------
+
+// Administrator-managed referral codes (§9.3). One distinct code per
+// influencer/society/institution. Codes are lowercase alphanumeric with
+// hyphens and carry no personal data. Unknown codes seen in the wild are still
+// recorded (as-is) so a mistyped or retired code is never lost.
+export const referralCodes = pgTable("referral_codes", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  label: text("label").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// First-touch visit log (§9.2), so the top of the funnel (visits) can be
+// reported per code. One row per new visitor (deduped client-side), inserted
+// server-side from the captured ref cookie.
+export const attributionVisits = pgTable("attribution_visits", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  code: text("code").notNull(), // "direct" when no code was present
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("attribution_visits_code_idx").on(t.code, t.createdAt)]);

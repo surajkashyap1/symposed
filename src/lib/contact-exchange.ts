@@ -50,7 +50,7 @@ export async function sendContactExchangeEmails(opts: {
         to: applicant.email,
         subject: `You've been accepted to “${opts.projectTitle}”`,
         text:
-          `Good news — you've been accepted to “${opts.projectTitle}” on Symposed.\n\n` +
+          `Good news, you've been accepted to “${opts.projectTitle}” on Symposed.\n\n` +
           `You can now contact the project lister directly:\n\n` +
           `${formatContact({ email: lister.email, phone: lister.phone })}\n\n` +
           `${guidance}\n\n${base}/applications`,

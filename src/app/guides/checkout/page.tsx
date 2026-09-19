@@ -19,7 +19,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const metadata = { title: "Review your guide request — Symposed" };
+export const metadata = { title: "Review your guide request | Symposed" };
 
 const PROFORMA_LABELS: [string, string][] = [
   ["grade", "Grade or role"],
@@ -31,6 +31,9 @@ const PROFORMA_LABELS: [string, string][] = [
   ["timeline", "Timeline"],
   ["statsConfidence", "Statistical confidence"],
   ["supervisor", "Supervisor"],
+  ["collaborators", "People you can involve"],
+  ["patientData", "Patient population or dataset access"],
+  ["nonEnglish", "Can work with non-English papers"],
 ];
 
 export default async function GuideCheckoutPage({
@@ -58,11 +61,9 @@ export default async function GuideCheckoutPage({
   const trader = traderInfo();
 
   // The price the user is about to be charged (re-resolved server-side at the
-  // moment of payment; a change forces the explicit confirmation below).
-  const currentPence =
-    pricing.introRemainingPublic > 0
-      ? pricing.introPricePence
-      : pricing.standardPricePence;
+  // moment of payment; a change forces the explicit confirmation below). While
+  // the payments toggle is off, nothing is charged: the request is queued free.
+  const currentPence = pricing.paymentsEnabled ? pricing.currentPricePence : 0;
   const displayPence = priceChanged
     ? Number.parseInt(priceChanged, 10) || currentPence
     : currentPence;
@@ -84,7 +85,7 @@ export default async function GuideCheckoutPage({
         <CardContent className="flex flex-col gap-6">
           {blocked && (
             <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
-              Sorry — guides aren&apos;t available for purchase from your
+              Sorry, guides aren&apos;t available for purchase from your
               country yet, because of the tax registration each market
               requires. Nothing has been charged. If you think this is wrong,
               please{" "}
@@ -99,7 +100,7 @@ export default async function GuideCheckoutPage({
               The introductory guides sold out while you had this page open.
               The price is now{" "}
               <strong>{formatPounds(displayPence)}</strong>. Nothing has been
-              charged — if you&apos;re happy with the new price, confirm below.
+              charged, if you&apos;re happy with the new price, confirm below.
             </div>
           )}
           {error && (
@@ -147,8 +148,7 @@ export default async function GuideCheckoutPage({
           <div className="rounded-lg border bg-secondary/50 px-5 py-4">
             <p className="flex items-baseline justify-between gap-3 text-sm">
               <span className="font-medium">
-                Symposed Publication Guide — bespoke, researched and verified
-                by a person
+                Symposed Publication Guide (bespoke, verified)
               </span>
               <span className="text-xl font-semibold">
                 {formatPriceLabel(displayPence)}
@@ -156,12 +156,12 @@ export default async function GuideCheckoutPage({
             </p>
             <p className="mt-1.5 text-xs text-muted-foreground">
               {displayPence === 0
-                ? "Free — no card needed, nothing to pay."
+                ? "Free. No card needed, nothing to pay."
                 : "Total price. No fees or taxes are added at checkout."}
               {displayPence > 0 &&
                 pricing.introRemainingPublic > 0 &&
                 displayPence === pricing.introPricePence &&
-                ` ${pricing.introRemainingPublic} of ${pricing.introQuantity} introductory guides remaining; verified again when you confirm.`}
+                ` ${pricing.introRemainingPublic} of ${pricing.introQuantity} guides remaining at this price; verified again when you confirm.`}
             </p>
           </div>
 
@@ -173,19 +173,20 @@ export default async function GuideCheckoutPage({
             </p>
             <p className="mt-2">
               <strong className="text-foreground">What you&apos;re buying:</strong>{" "}
-              a bespoke research guide, individually researched, written and
-              verified by a person, delivered as downloadable files (PDF,
-              editable DOCX, and an XLSX extraction template) within 5 working
-              days of payment.
+              a bespoke research guide, individually prepared and verified,
+              delivered as downloadable files (PDF, editable DOCX, and an XLSX
+              extraction template) within 7 working days of payment.
             </p>
             <p className="mt-2">
               <strong className="text-foreground">Cancellation:</strong> you
               normally have a 14-day right to cancel a digital purchase. Because
               you ask us to begin bespoke work immediately, that right ends once
-              work begins — that is what the first checkbox below consents to.
-              Our own guarantee is broader: if your question turns out to be
-              already answered, you get a full refund and a free replacement
-              guide.
+              work begins. That is what the first checkbox below consents to,
+              and it does not affect your statutory rights. Our own commitment
+              goes further: if you believe your question has already been
+              published, tell us within 30 days and we will refine the title,
+              the angle and the workflow and issue you a modified guide at no
+              cost.
             </p>
           </div>
 

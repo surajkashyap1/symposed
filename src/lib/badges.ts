@@ -8,7 +8,7 @@ export const BADGE_DEFS = {
   new_researcher: {
     code: "new_researcher",
     name: "New Researcher",
-    description: "Starting out — no completed projects yet.",
+    description: "Starting out, no completed projects yet.",
   },
   research_mentor: {
     code: "research_mentor",

@@ -4,10 +4,11 @@ import { db } from "@/db";
 import { guideOrders } from "@/db/schema";
 import { sendEmail } from "@/lib/email";
 
-// Daily cron: alert the administrator when an order has sat in paid /
-// in-progress for more than 4 working days (spec §3.4). The 5-working-day
-// promise is a commitment; missing it silently destroys trust in a new paid
-// product. Alerts fire once per order (overdue_alerted_at).
+// Daily cron: alert the administrator when an order has been queued in paid /
+// in-progress for more than 5 working days (amendment §3). Delivery is
+// promised within 7 working days; alerting at more than 5 leaves a deliberate
+// buffer, because promising 7 and delivering in 5 builds trust while missing 7
+// silently destroys it. Alerts fire once per order (overdue_alerted_at).
 export const dynamic = "force-dynamic";
 
 function workingDaysSince(from: Date, to: Date): number {
@@ -43,7 +44,7 @@ export async function GET(request: Request) {
 
   const now = new Date();
   const overdue = candidates.filter(
-    (o) => o.paidAt && workingDaysSince(o.paidAt, now) >= 4
+    (o) => o.paidAt && workingDaysSince(o.paidAt, now) > 5
   );
 
   const inbox =
@@ -56,11 +57,11 @@ export async function GET(request: Request) {
     if (!inbox) break;
     const ok = await sendEmail({
       to: inbox,
-      subject: `⚠ Guide order overdue: ${o.fullName} — day 4+ of 5`,
+      subject: `⚠ Guide order queued over 5 working days: ${o.fullName}`,
       text: [
         `Order ${o.id} (${o.fullName}, ${o.email}) was paid on ${o.paidAt!.toLocaleDateString("en-GB")} and is still ${o.status.replace("_", " ")}.`,
         "",
-        "The 5-working-day delivery promise runs out tomorrow. Upload the guide today:",
+        "It has now been queued more than 5 working days. The 7-working-day delivery promise is approaching. Upload the guide today:",
         `${base}/admin`,
       ].join("\n"),
     });

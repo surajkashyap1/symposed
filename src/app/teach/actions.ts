@@ -5,11 +5,12 @@ import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
+  contactMessages,
   teachingSubmissionRevisions,
   teachingSubmissions,
   teachingTopics,
 } from "@/db/schema";
-import { requireUser, ensureProfile } from "@/lib/auth";
+import { getSessionUser, requireUser, ensureProfile } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
 import { notify } from "@/lib/notify";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -26,6 +27,40 @@ import {
 } from "@/lib/teach-meta";
 
 const TEACHING_BUCKET = "teaching-materials";
+
+// Amendment §10 — the teaching feature is in development. The public page is a
+// short description plus a single email capture for people who want to be told
+// when it opens. Interest is stored as a contact message (topic
+// "teaching_waitlist") so it surfaces on /admin with no new table.
+export async function joinTeachingWaitlist(formData: FormData) {
+  const user = await getSessionUser();
+  const email =
+    String(formData.get("email") ?? "").trim().toLowerCase() ||
+    user?.email ||
+    "";
+  if (!email.includes("@"))
+    redirect(`/teach?error=${encodeURIComponent("Enter a valid email address.")}`);
+
+  await db.insert(contactMessages).values({
+    senderId: user?.id ?? null,
+    email,
+    topic: "teaching_waitlist",
+    message: "Wants to be told when teaching opens.",
+  });
+
+  const inbox =
+    process.env.CONTACT_INBOX ??
+    (process.env.ADMIN_EMAILS ?? "").split(",")[0]?.trim();
+  if (inbox) {
+    await sendEmail({
+      to: inbox,
+      subject: "Symposed teaching waitlist signup",
+      text: `New teaching waitlist signup: ${email}`,
+    });
+  }
+
+  redirect("/teach?joined=1");
+}
 
 function fail(message: string): never {
   redirect(`/teach/apply?error=${encodeURIComponent(message)}`);
@@ -126,7 +161,7 @@ export async function submitTeachingProposal(formData: FormData) {
     const { error } = await admin.storage
       .from(TEACHING_BUCKET)
       .upload(materialsPath, file, { contentType: file.type, upsert: false });
-    if (error) fail("Upload failed — please try again.");
+    if (error) fail("Upload failed, please try again.");
   }
 
   const common = {
@@ -235,7 +270,7 @@ export async function submitTeachingProposal(formData: FormData) {
       "",
       `Thanks for proposing "${title}". It's now in our review queue and will be assessed on a rolling basis against the published rubric (${process.env.NEXT_PUBLIC_SITE_URL ?? ""}/teach).`,
       "",
-      `We've emailed ${clinician.clinicianName} to confirm they've agreed to review your material — your course can't be published until they confirm, so do let them know to expect the email.`,
+      `We've emailed ${clinician.clinicianName} to confirm they've agreed to review your material, your course can't be published until they confirm, so do let them know to expect the email.`,
       "",
       "We'll be in touch with the outcome or with feedback.",
     ].join("\n"),

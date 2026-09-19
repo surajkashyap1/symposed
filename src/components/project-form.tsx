@@ -32,7 +32,7 @@ export function ProjectForm({
       )}
 
       <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
-        <strong>Listings are public — no personal or patient data.</strong> Do
+        <strong>Listings are public, no personal or patient data.</strong> Do
         not include patient-identifiable information (names, NHS numbers, dates
         of birth, case details), phone numbers, email addresses, or confidential
         NHS/university information. Contact details are exchanged privately

@@ -170,14 +170,14 @@ export default async function Home() {
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div className="max-w-xl">
               <h2 className="font-heading text-2xl font-semibold tracking-tight [text-wrap:balance]">
-                Can&apos;t find a project? Start your own — with a verified
+                Can&apos;t find a project? Start your own, with a verified
                 question.
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-primary-foreground/85">
                 A Publication Guide gives you a research question checked
                 against the literature, a full search strategy, protocol and
-                method walkthrough — researched and verified by a person, built
-                around your interests, delivered within 5 working days.
+                method walkthrough, built around your interests and delivered
+                within 7 working days.
               </p>
             </div>
             <Link
@@ -201,8 +201,8 @@ export default async function Home() {
               Advertise yourself to listers
             </h2>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-              Post a free listing on the People board — your skills, your
-              availability, what you&apos;re looking for — and let project
+              Post a free listing on the People board, your skills, your
+              availability, what you&apos;re looking for, and let project
               leads come to you.
             </p>
             <Link

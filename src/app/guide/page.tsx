@@ -28,7 +28,7 @@ export default function GuidePage() {
       <p>
         Browse <Link href="/projects">open projects</Link> and filter by
         specialty, project type and experience level. Beginner-friendly
-        projects are ranked first by default — everyone starts somewhere.
+        projects are ranked first by default, everyone starts somewhere.
       </p>
 
       <h2>3. Apply well</h2>
@@ -40,7 +40,7 @@ export default function GuidePage() {
 
       <h2>4. Deliver, then build your reputation</h2>
       <p>
-        Once accepted, agree expectations early (role, authorship, timeline —
+        Once accepted, agree expectations early (role, authorship, timeline, 
         see our <Link href="/research-integrity">research integrity guidelines</Link>).
         After the project, exchange reviews: they carry into every future
         application.
@@ -51,13 +51,13 @@ export default function GuidePage() {
         Consultants, registrars and other eligible posters can{" "}
         <Link href="/projects/new">list a project</Link> after verification.
         Good listings state the work, the outputs, the time commitment and the
-        authorship plan — see the{" "}
+        authorship plan, see the{" "}
         <Link href="/posting-guidelines">posting guidelines</Link>. Never
         include patient or confidential information.
       </p>
 
       <p>
-        Questions or stuck? <Link href="/contact">Contact us</Link> — we read
+        Questions or stuck? <Link href="/contact">Contact us</Link>, we read
         everything.
       </p>
     </Prose>

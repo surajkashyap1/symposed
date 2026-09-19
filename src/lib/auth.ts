@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import type { User } from "@supabase/supabase-js";
@@ -6,6 +7,7 @@ import { db } from "@/db";
 import { profiles } from "@/db/schema";
 import { createClient } from "@/lib/supabase/server";
 import { classifyEmail } from "@/lib/verification";
+import { REF_COOKIE, DIRECT, normalizeCode } from "@/lib/attribution";
 import type { Profile } from "@/lib/profile";
 
 // Server-only auth helpers. Never import into a client component.
@@ -45,6 +47,12 @@ export const ensureProfile = cache(async (user: User): Promise<Profile> => {
     email.split("@")[0] ||
     "New user";
 
+  // Amendment §9: write the first-touch channel onto the record, once, at
+  // profile creation. First touch already won at the cookie stage; a missing
+  // code is recorded as "direct".
+  const refCode =
+    normalizeCode((await cookies()).get(REF_COOKIE)?.value) ?? DIRECT;
+
   const [created] = await db
     .insert(profiles)
     .values({
@@ -53,6 +61,7 @@ export const ensureProfile = cache(async (user: User): Promise<Profile> => {
       fullName,
       isVerified: cls.isVerified,
       canSupervise: cls.canSupervise,
+      refCode,
     })
     .onConflictDoNothing()
     .returning();

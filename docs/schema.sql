@@ -66,6 +66,8 @@ create table profiles (
   preferred_project_types text,                    -- comma-separated project types sought
   preferred_specialties text,                      -- comma-separated specialties sought
   profile_completeness int not null default 0,     -- 0-100, computed app-side
+  ref_code            text,                        -- §9 first-touch channel, set once at signup
+  listing_nudge_opt_out boolean not null default false, -- §8.5 nudge-email opt-out
   created_at          timestamptz not null default now(),
   updated_at          timestamptz not null default now()
 );
@@ -134,6 +136,7 @@ create table projects (
   positions_available  int not null default 1,
   status               project_status not null default 'open',
   application_deadline date,
+  source_guide_order_id uuid, -- §8.4 auto-drafted from a guide (FK added after guide_orders below)
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now()
 );
@@ -345,11 +348,18 @@ create table guide_orders (
   paid_at                  timestamptz,
   delivered_at             timestamptz,
   overdue_alerted_at       timestamptz,
+  listing_nudge_10_at      timestamptz,     -- §8.5 first publish-your-listing nudge
+  listing_nudge_30_at      timestamptz,     -- §8.5 second/final nudge
   review_token             text unique,
   review_requested_at      timestamptz,
   created_at               timestamptz not null default now(),
   updated_at               timestamptz not null default now()
 );
+
+-- §8.4 FK (declared here because projects is defined before guide_orders).
+alter table projects
+  add constraint projects_source_guide_order_id_fkey
+  foreign key (source_guide_order_id) references guide_orders(id) on delete set null;
 
 create index guide_orders_profile_idx on guide_orders (profile_id);
 create index guide_orders_status_idx on guide_orders (status, created_at);
@@ -368,11 +378,17 @@ create index guide_order_files_order_idx on guide_order_files (order_id);
 
 -- Single row (id = 1), admin-editable. Prices are pence and are the TOTAL
 -- payable (DMCC drip-pricing ban).
+-- Three-band price ladder (amendment §2): first `free_quantity` guides free,
+-- next `intro_quantity` at `intro_price_pence` (the £25 tier), then
+-- `standard_price_pence` (£45). `payments_enabled` is the launch toggle: while
+-- OFF, checkout is skipped and requests go straight to the queue at no charge.
 create table guide_pricing_config (
   id                   integer primary key default 1,
   standard_price_pence integer not null default 4500,
   intro_price_pence    integer not null default 2500,
-  intro_quantity       integer not null default 10,
+  intro_quantity       integer not null default 25,
+  free_quantity        integer not null default 25,
+  payments_enabled     boolean not null default false,
   blocked_countries    text[] not null,  -- ISO alpha-2, default {IN,PK}
   updated_at           timestamptz not null default now()
 );
@@ -533,6 +549,50 @@ create table app_errors (
 );
 
 create index app_errors_created_idx on app_errors (created_at);
+
+-- =====================================================================
+-- MEMBER BENEFITS + ATTRIBUTION (amendment §8 / §9)
+-- =====================================================================
+
+-- §8: single-row config for the tunables the amendment keeps configurable.
+create table platform_config (
+  id                     integer primary key default 1,
+  credits_standard       int not null default 3,   -- §8.9 no live listing
+  credits_lister         int not null default 6,   -- §8.9 has a live listing
+  credits_guide_lister   int not null default 9,   -- §8.9 live listing from a guide
+  support_allowance      int not null default 3,   -- §8.8 bounded direct support
+  support_response_days  int not null default 7,
+  vest_listing_days      int not null default 0,   -- §8.7 anti-gaming, 0 = off
+  updated_at             timestamptz not null default now()
+);
+
+-- §8.8 bounded direct-support questions; allowance enforced in app logic.
+create table support_questions (
+  id          uuid primary key default gen_random_uuid(),
+  profile_id  uuid not null references profiles(id) on delete cascade,
+  order_id    uuid references guide_orders(id) on delete set null,
+  question    text not null,
+  answer      text,
+  answered_at timestamptz,
+  created_at  timestamptz not null default now()
+);
+create index support_questions_profile_idx on support_questions (profile_id, created_at);
+
+-- §9.3 administrator-managed referral codes (lowercase, alphanumeric+hyphens).
+create table referral_codes (
+  id         serial primary key,
+  code       text not null unique,
+  label      text not null,
+  created_at timestamptz not null default now()
+);
+
+-- §9.2 first-touch visit log (one row per new visitor, "direct" when no code).
+create table attribution_visits (
+  id         uuid primary key default gen_random_uuid(),
+  code       text not null,
+  created_at timestamptz not null default now()
+);
+create index attribution_visits_code_idx on attribution_visits (code, created_at);
 
 -- =====================================================================
 -- DEFERRED (do NOT build for MVP — add tables when you reach these):

@@ -18,7 +18,7 @@ import { Select } from "@/components/ui/select";
 import { Button, buttonVariants } from "@/components/ui/button";
 
 export const metadata = {
-  title: "Available for projects — Symposed",
+  title: "Available for projects | Symposed",
   description:
     "Students and clinicians currently looking to join research projects. Advertise yourself and let listers come to you.",
 };
@@ -93,7 +93,7 @@ export default async function AvailablePage({
   const banner = sp.posted
     ? "Your listing is live. Listers can now find you."
     : sp.renewed
-      ? "Listing renewed — it's back at the top of the board for another 60 days."
+      ? "Listing renewed, it's back at the top of the board for another 60 days."
       : sp.found
         ? "Brilliant news. Your listing has been taken off the board."
         : sp.removed
@@ -253,7 +253,7 @@ export default async function AvailablePage({
               "Try broadening your search."
             ) : (
               <>
-                Be the first —{" "}
+                Be the first, {" "}
                 <Link
                   href={user ? "/available/new" : "/login"}
                   className="text-primary hover:underline"

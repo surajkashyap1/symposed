@@ -51,7 +51,7 @@ export async function GET(request: Request) {
         "",
         `${base}/available`,
         "",
-        "If you've found a project, you can mark that on the same page — it helps us know the board is working.",
+        "If you've found a project, you can mark that on the same page, it helps us know the board is working.",
       ].join("\n"),
     });
     if (ok) {

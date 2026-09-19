@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { getApplicationsByApplicant, getApplicationAllowance } from "@/lib/queries/applications";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "@/lib/application-meta";
+import { TIER_LABEL } from "@/lib/queries/entitlements";
 import { withdrawApplication } from "@/app/applications/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -27,7 +28,7 @@ export default async function ApplicationsPage() {
             left this week
             {allowance.bonus && (
               <Badge variant="outline" className="ml-2">
-                +{allowance.limit - 3} lister bonus
+                {TIER_LABEL[allowance.tier]}
               </Badge>
             )}
           </div>

@@ -43,7 +43,7 @@ export default async function ContactPage({
           <CardTitle>Contact us</CardTitle>
           <CardDescription>
             Feedback, improvement ideas, complaints, safety concerns or data
-            protection requests — we read everything. Please don&apos;t include
+            protection requests, we read everything. Please don&apos;t include
             patient or confidential information.
           </CardDescription>
         </CardHeader>
@@ -55,7 +55,7 @@ export default async function ContactPage({
           )}
           {sent ? (
             <p className="rounded-md bg-accent px-3 py-2 text-sm">
-              Thanks — your message has been received. If it needs a reply
+              Thanks, your message has been received. If it needs a reply
               we&apos;ll come back to you at the email you gave. Data protection
               complaints are acknowledged within 30 days.
             </p>

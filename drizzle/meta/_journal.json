@@ -71,6 +71,20 @@
       "when": 1788000352964,
       "tag": "0009_watery_juggernaut",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789320146290,
+      "tag": "0010_rainy_timeslip",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789321582945,
+      "tag": "0011_light_xorn",
+      "breakpoints": true
     }
   ]
 }

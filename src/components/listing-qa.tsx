@@ -26,7 +26,7 @@ export function ListingQA({
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">
         Public questions and answers about this listing. Don&apos;t include
-        personal, contact or patient information — see our{" "}
+        personal, contact or patient information, see our{" "}
         <a href="/acceptable-use" className="underline" target="_blank">
           Acceptable Use Policy
         </a>

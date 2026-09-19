@@ -6,6 +6,7 @@ const SECTIONS = [
   { key: "guides", label: "Guides", href: "/admin/guides" },
   { key: "teaching", label: "Teaching", href: "/admin/teaching" },
   { key: "listings", label: "Listings", href: "/admin/listings" },
+  { key: "attribution", label: "Attribution", href: "/admin/attribution" },
 ] as const;
 
 export function AdminNav({ current }: { current: (typeof SECTIONS)[number]["key"] }) {

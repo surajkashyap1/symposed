@@ -97,6 +97,9 @@ export async function listOpenProjects(
     opts.rank === "competitive_first"
       ? desc(competitiveRank)
       : desc(beginnerRank);
+  // Amendment §8.2/§8.7: projects that came from a Symposed guide get priority
+  // placement, sitting at the top of the board above the usual ranking.
+  const guideRank = sql<number>`case when ${projects.sourceGuideOrderId} is not null then 1 else 0 end`;
 
   // Count first so an out-of-range ?page= clamps to the last real page
   // instead of rendering an empty grid.
@@ -114,7 +117,7 @@ export async function listOpenProjects(
     .leftJoin(profiles, eq(profiles.id, projects.ownerId))
     // Beginner-friendly listings get higher visibility (ROADMAP §9/§11).
     .where(and(...conds))
-    .orderBy(rankOrder, desc(projects.createdAt), desc(projects.id))
+    .orderBy(desc(guideRank), rankOrder, desc(projects.createdAt), desc(projects.id))
     .limit(PROJECTS_PAGE_SIZE)
     .offset((page - 1) * PROJECTS_PAGE_SIZE);
 

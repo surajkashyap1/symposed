@@ -37,3 +37,7 @@ alter table public.teaching_submissions enable row level security;
 alter table public.teaching_submission_revisions enable row level security;
 alter table public.user_badges enable row level security;
 alter table public.verifications enable row level security;
+alter table public.platform_config enable row level security;
+alter table public.support_questions enable row level security;
+alter table public.referral_codes enable row level security;
+alter table public.attribution_visits enable row level security;

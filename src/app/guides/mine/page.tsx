@@ -2,12 +2,14 @@ import Link from "next/link";
 import { Download, FileText } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { listOrdersForUser, listOrderFiles } from "@/lib/queries/guides";
+import { getListingForOrder } from "@/lib/guide-listing";
 import { DELIVERY_PROMISE, formatPounds } from "@/lib/guides-meta";
+import { GuideListingPanel } from "@/components/guide-listing-panel";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-export const metadata = { title: "My guides — Symposed" };
+export const metadata = { title: "My guides | Symposed" };
 
 const STATUS_LABELS: Record<string, string> = {
   submitted: "Awaiting payment",
@@ -22,24 +24,53 @@ const STATUS_CLASS: Record<string, string> = {
   refunded: "bg-secondary text-secondary-foreground",
 };
 
-export default async function MyGuidesPage() {
+export default async function MyGuidesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    error?: string;
+    draftSaved?: string;
+    draftRegenerated?: string;
+    regenerate?: string;
+  }>;
+}) {
   const user = await requireUser();
+  const { error, draftSaved, draftRegenerated, regenerate } = await searchParams;
   const orders = await listOrdersForUser(user.id);
-  const filesByOrder = new Map(
-    await Promise.all(
-      orders
-        .filter((o) => o.status === "delivered")
-        .map(async (o) => [o.id, await listOrderFiles(o.id)] as const)
-    )
-  );
+  const delivered = orders.filter((o) => o.status === "delivered");
+  const [filesByOrder, listingByOrder] = await Promise.all([
+    Promise.all(
+      delivered.map(async (o) => [o.id, await listOrderFiles(o.id)] as const)
+    ).then((e) => new Map(e)),
+    Promise.all(
+      delivered.map(async (o) => [o.id, await getListingForOrder(o.id)] as const)
+    ).then((e) => new Map(e)),
+  ]);
+
+  const flash = draftSaved
+    ? "Draft saved."
+    : draftRegenerated
+      ? "Draft listing regenerated from your guide."
+      : null;
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-10">
       <h1 className="text-2xl font-semibold tracking-tight">My guides</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Your bespoke research guides. Downloads never expire — your account is
+        Your bespoke research guides. Downloads never expire, your account is
         the licence.
       </p>
+
+      {error && (
+        <div className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+      {flash && (
+        <div className="mt-4 rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm">
+          {flash}
+        </div>
+      )}
 
       {orders.length === 0 ? (
         <div className="mt-10 rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
@@ -63,7 +94,7 @@ export default async function MyGuidesPage() {
                       <p className="font-medium">
                         Publication Guide
                         {o.pricePaidPence
-                          ? ` — ${formatPounds(o.pricePaidPence)}`
+                          ? `, ${formatPounds(o.pricePaidPence)}`
                           : ""}
                       </p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
@@ -117,6 +148,14 @@ export default async function MyGuidesPage() {
                         </li>
                       ))}
                     </ul>
+                  )}
+
+                  {o.status === "delivered" && (
+                    <GuideListingPanel
+                      orderId={o.id}
+                      listing={listingByOrder.get(o.id) ?? null}
+                      offerRegenerate={regenerate === o.id}
+                    />
                   )}
                 </CardContent>
               </Card>

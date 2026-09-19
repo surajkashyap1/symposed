@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { getOrderForUser } from "@/lib/queries/guides";
 import { DELIVERY_PROMISE, formatPounds } from "@/lib/guides-meta";
 import { isUuid } from "@/lib/utils";
+import { ListingBenefits } from "@/components/listing-benefits";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -13,7 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const metadata = { title: "Order confirmation — Symposed" };
+export const metadata = { title: "Order confirmation | Symposed" };
 
 export default async function GuideThanksPage({
   searchParams,
@@ -37,12 +38,12 @@ export default async function GuideThanksPage({
       <Card>
         <CardHeader>
           <CardTitle>
-            {paid ? "Order confirmed — we're on it" : "Finishing up…"}
+            {paid ? "Order confirmed, we're on it" : "Finishing up…"}
           </CardTitle>
           <CardDescription>
             {paid
               ? DELIVERY_PROMISE
-              : "Your payment is being confirmed. This page updates once Stripe notifies us — usually within a few seconds. If you paid, your order is safe even if you close this tab."}
+              : "Your payment is being confirmed. This page updates once Stripe notifies us, usually within a few seconds. If you paid, your order is safe even if you close this tab."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-5 text-sm leading-relaxed">
@@ -53,8 +54,9 @@ export default async function GuideThanksPage({
                 {order.pricePaidPence
                   ? `We've received your payment of ${formatPounds(order.pricePaidPence)}`
                   : "Your guide is confirmed"}{" "}
-                and your proforma is with the team. A person now researches
-                your topic, verifies an open question, and builds your guide.{" "}
+                and your proforma is with the team. We now research your topic
+                using our own developed and tested approach, verify an open
+                question, and build your guide.{" "}
                 <strong>{DELIVERY_PROMISE}</strong> You&apos;ll get an email
                 with a confirmation now, and another when your guide is ready
                 to download from{" "}
@@ -69,7 +71,7 @@ export default async function GuideThanksPage({
                 </p>
                 <p className="mt-1 text-muted-foreground">
                   Your guide ends with a project ready to run. Post it on the
-                  Symposed board and recruit the people you&apos;ll need —
+                  Symposed board and recruit the people you&apos;ll need, 
                   screeners, extractors, a statistician.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -87,6 +89,10 @@ export default async function GuideThanksPage({
                   </Link>
                 </div>
               </div>
+              <ListingBenefits
+                heading="What you get if you list your project"
+                className="border-t pt-5"
+              />
             </>
           ) : (
             <div className="flex flex-wrap gap-2">

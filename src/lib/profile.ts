@@ -14,7 +14,7 @@ export function countWords(text: string): number {
   return t.split(/\s+/).length;
 }
 
-// Profile completeness (0–100) — drives the onboarding nudge (ROADMAP §1).
+// Profile completeness (0 to 100) — drives the onboarding nudge (ROADMAP §1).
 const COMPLETENESS_FIELDS: (keyof Profile)[] = [
   "fullName",
   "university",

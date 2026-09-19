@@ -18,7 +18,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const metadata = { title: "Get in touch — Symposed" };
+export const metadata = { title: "Get in touch | Symposed" };
 
 export default async function ListingContactPage({
   params,
@@ -58,7 +58,7 @@ export default async function ListingContactPage({
 
       {reported && (
         <div className="mt-4 rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm">
-          Thanks — your report has been received and will be reviewed.
+          Thanks, your report has been received and will be reviewed.
         </div>
       )}
 
@@ -69,7 +69,7 @@ export default async function ListingContactPage({
             {[stage, listing.showInstitution ? listing.ownerUniversity : null]
               .filter(Boolean)
               .join(" · ") || "Available for projects"}
-            {" — "}
+            {", "}
             &ldquo;{listing.headline}&rdquo;
           </CardDescription>
         </CardHeader>

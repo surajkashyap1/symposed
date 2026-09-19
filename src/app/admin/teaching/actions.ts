@@ -65,7 +65,7 @@ export async function setTeachingStatus(formData: FormData) {
     ],
     revisions_requested: [
       "Your teaching proposal needs revisions",
-      `"${submission.title}" needs some changes before it can go ahead:\n\n${feedback}\n\nRevise and resubmit from the teaching page — your previous version is kept.`,
+      `"${submission.title}" needs some changes before it can go ahead:\n\n${feedback}\n\nRevise and resubmit from the teaching page, your previous version is kept.`,
     ],
     declined: [
       "Your teaching proposal was declined",

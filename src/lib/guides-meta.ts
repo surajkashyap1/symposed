@@ -1,7 +1,10 @@
-// Shared copy + vocabulary for Publication Guides (docs spec §3).
-// Shaded-box copy from the spec is used VERBATIM — several passages exist for
-// legal reasons (Consumer Contracts Regulations, CRA 2015, DMCC Act 2024).
-// Do not paraphrase or "improve" it.
+// Shared copy + vocabulary for Publication Guides (docs spec §3, amended by
+// the Website Changes spec). Shaded-box copy from the amendment is used
+// VERBATIM: several passages exist for legal reasons (Consumer Contracts
+// Regulations, CRA 2015, DMCC Act 2024). Do not paraphrase or "improve" it.
+//
+// House style (amendment §11): no em or en dashes in prose. Compound hyphens
+// (pre-populated, non-English, follow-up) are kept. Ranges use the word "to".
 
 export const GUIDE_GRADES = [
   "Medical student",
@@ -13,22 +16,22 @@ export const GUIDE_GRADES = [
   "Other",
 ] as const;
 
+// Amendment §1: only review-type publications are offered. Exactly these four,
+// in this order. Meta-analysis is treated as a systematic review with
+// quantitative synthesis and has no separate option.
 export const PUBLICATION_TYPES = [
   "Systematic review",
   "Literature review",
   "Narrative review",
-  "Meta-analysis",
-  "Case report",
-  "Audit or QI write-up",
-  "Not sure — recommend for me",
+  "Not sure, recommend one for me",
 ] as const;
 
-export const HOURS_OPTIONS = ["Under 3", "3–5", "5–10", "Over 10"] as const;
+export const HOURS_OPTIONS = ["Under 3", "3 to 5", "5 to 10", "Over 10"] as const;
 
 export const TIMELINE_OPTIONS = [
   "Within 3 months",
-  "3–6 months",
-  "6–12 months",
+  "3 to 6 months",
+  "6 to 12 months",
   "No deadline",
 ] as const;
 
@@ -48,74 +51,179 @@ export const DATABASE_OPTIONS = [
 
 export const SUPERVISOR_OPTIONS = ["Yes", "No", "Possibly"] as const;
 
+export const YES_NO_OPTIONS = ["Yes", "No"] as const;
+
+// Amendment §7.1: required, no zero option. Every project we design needs at
+// least one collaborator.
+export const COLLABORATOR_OPTIONS = ["1", "2", "3", "More than 3"] as const;
+
+export const COLLABORATOR_HELP =
+  "Every project we design is scoped for a small team. Reviews are stronger, and far more likely to be accepted, when papers are screened independently by more than one person.";
+
 export const MAX_GUIDE_SPECIALTIES = 3;
 export const TOPIC_MAX_CHARS = 500;
 
-// §3.1.1 — lead phrases bold, exactly as written.
-export const WHAT_IS_INCLUDED: [string, string][] = [
-  [
-    "A verified research title.",
-    "A specific question, checked against published systematic reviews, meta-analyses and registered protocols to confirm it has not already been answered.",
-  ],
-  [
-    "A gap analysis.",
-    "What has been published on your topic, what has not, and why your question is worth a journal's time.",
-  ],
-  [
-    "A draft search strategy.",
-    "Written in full Boolean syntax with MeSH terms, ready to paste into PubMed, Embase and Cochrane.",
-  ],
-  [
-    "A draft protocol.",
-    "Inclusion and exclusion criteria written for your specific question, not a generic template, with the reasoning behind each one.",
-  ],
-  [
-    "A pre-populated PRISMA flow diagram.",
-    "With the real record counts from the search we ran, ready to drop into your manuscript.",
-  ],
-  [
-    "A data extraction template.",
-    "The specific fields you will need for your review, as an editable spreadsheet.",
-  ],
-  [
-    "A step-by-step method walkthrough.",
-    "Screening, extraction, quality assessment and synthesis, written for your study design.",
-  ],
-  [
-    "A shortlist of target journals.",
-    "Matched to your study type and likely scope, with submission requirements and realistic acceptance expectations.",
-  ],
-  [
-    "Who to approach for supervision.",
-    "Named routes to support in your field, and a template for the approach email.",
-  ],
-  [
-    "A disclosure statement.",
-    "Wording you can copy into your methods and acknowledgements so your use of methodological support is properly declared to the journal.",
-  ],
-];
+// Amendment §4.1 — hero description, word for word.
+export const HERO_DESCRIPTION =
+  "Tell us your publication requirements and we will search the literature to give you a project title and a complete guide on how to publish it.";
 
-export const DELIVERY_PROMISE = "Your guide is delivered within 5 working days.";
+// Amendment §4.2 — method statement, word for word. The search method itself
+// is proprietary and is never described in detail anywhere on the site (§4.3).
+export const METHOD_STATEMENT =
+  "We have developed and tested our own approach to finding research topics that can be published.";
 
-// §3.1.4 — verbatim, deliberately generous, deliberately handles the
-// ambiguous case.
+// Amendment §5 — three "What is included" panels, shown laterally.
+// Systematic review is first and is the default view. Each item is [lead,
+// explanation]: the lead is bold, the explanation normal weight (empty where
+// none is given).
+export type PanelItem = readonly [lead: string, rest: string];
+export type GuidePanel = {
+  key: string;
+  title: string;
+  items: readonly PanelItem[];
+};
+
+export const GUIDE_PANELS: readonly GuidePanel[] = [
+  {
+    key: "systematic",
+    title: "Systematic review",
+    items: [
+      ["A verified research question", "checked against published reviews and registered protocols"],
+      ["The date your question was checked", "so you know exactly how current the check is"],
+      ["A summary of similar published work", "and how your question differs from each"],
+      ["Multiple complete search strategies", "with every search term, and a recommendation on which to use"],
+      ["Translated syntax", "for the databases you will need to search yourself"],
+      ["A table of suggested papers", "with study design, sample size, and where each one may be useful"],
+      ["A full protocol", "with inclusion and exclusion criteria, and the reasoning behind each"],
+      ["A pre-drafted PROSPERO registration entry", "so you can register and claim your question quickly"],
+      ["A PRISMA flow diagram", "pre-populated with the counts from our search"],
+      ["The correct risk of bias tool", "for your study design"],
+      ["A recommended screening platform", "and how to set it up"],
+      ["A data extraction template", ""],
+      ["The statistical tests you are likely to need", "and the skills required to run them"],
+      ["A full publication structure", "with headings, subheadings, figures and tables"],
+      ["A timeline", "mapped to the hours you have available"],
+      ["Common reasons this type of review is rejected", ""],
+    ],
+  },
+  {
+    key: "literature",
+    title: "Literature review",
+    items: [
+      ["A verified research question", "checked against what has already been published"],
+      ["A summary of similar published work", "and how yours differs"],
+      ["Complete search strategies", "with every search term, and a recommendation on which to use"],
+      ["A table of suggested papers", "organised by theme"],
+      ["A structured approach", "to selecting and appraising your sources"],
+      ["A full publication structure", "with headings and subheadings"],
+      ["Guidance on synthesising findings", "where a meta-analysis is not appropriate"],
+      ["A shortlist of target journals", "with their requirements"],
+      ["A timeline", "mapped to the hours you have available"],
+    ],
+  },
+  {
+    key: "narrative",
+    title: "Narrative review",
+    items: [
+      ["A verified topic and a defensible angle", ""],
+      ["What has already been written on the topic", "and where the space is"],
+      ["A search approach", "for identifying the key literature"],
+      ["A table of suggested papers", "with a suggested use for each"],
+      ["A structure for your argument", "with headings and subheadings"],
+      ["Guidance on maintaining balance", "and avoiding the common criticisms of this format"],
+      ["A shortlist of target journals", "with their requirements"],
+      ["A timeline", "mapped to the hours you have available"],
+    ],
+  },
+] as const;
+
+// Amendment §3 — turnaround is 7 working days. Guide requests are processed in
+// weekly batches; 7 working days accommodates the wait plus verification and
+// delivery.
+export const DELIVERY_PROMISE = "Your guide is delivered within 7 working days.";
+
+// Amendment §6 — the modified guide commitment, word for word. The refund
+// guarantee is removed. The statutory-rights line is REQUIRED and must not be
+// removed (CRA 2015). Never use "no refunds", "non-refundable" or
+// "all sales final" anywhere on the site.
 export const GUARANTEE_PARAGRAPHS = [
-  "If the review your guide is built around has already been published, we will refund you in full and produce a replacement guide on a different question at no cost.",
-  "We check every question against published systematic reviews, meta-analyses and registered protocols before we build your guide. If you find a closely related publication that you believe overlaps with your question enough to count as duplication, email us within 30 days with the citation. Where the overlap is genuinely arguable, we will resolve it in your favour.",
+  "If you believe the question in your guide has already been published, contact us within 30 days with the citation. We will work with you to refine the title, the angle and the workflow, and issue you a modified guide at no cost.",
+  "This does not affect your statutory rights.",
 ];
 
-// §3.1.2 — four steps, shown with icons.
+// Amendment §4.4 — disclosure inside the delivered guide. Two SEPARATE items,
+// which must not be conflated.
+//
+// Item one: the acknowledgement wording the buyer copies into their
+// manuscript. Names Symposed only.
+export const ACKNOWLEDGEMENT_WORDING =
+  "Methodological support for this study was provided by Symposed.";
+
+// Item two: a note addressed to the buyer, NOT copied into their paper. Appears
+// in the delivered document only and never on any public page.
+export const AUTHOR_AI_NOTE =
+  "Note for authors: AI assisted tools were used in developing the search strategy for this guide. Most journals now require any use of AI in the preparation of a manuscript, including methodology development, to be declared. Please check the disclosure policy of your target journal before you submit, and declare accordingly.";
+
+// Amendment §8.2 — what a buyer gets if they list their project. Lead phrase
+// bold, explanation normal weight. Shown on the guides page, in the delivered
+// guide and on the confirmation page.
+export const LISTING_BENEFITS: [string, string][] = [
+  [
+    "Lead the project rather than just complete it.",
+    "Recruiting and coordinating a team is evidence you cannot generate working alone, and it is recorded on your Symposed profile.",
+  ],
+  [
+    "Named on your listing.",
+    "Your project is posted under your name, so collaborators know who they are joining.",
+  ],
+  [
+    "Priority placement.",
+    "Projects that came from a Symposed guide sit at the top of the board.",
+  ],
+  [
+    "Direct support while you work.",
+    "Ask us about your methodology, your screening decisions or your analysis.",
+  ],
+  [
+    "Help finding a supervisor.",
+    "We will point you toward suitable people in your field.",
+  ],
+  [
+    "Draft approach emails.",
+    "We will write the email to your prospective supervisor if you want one.",
+  ],
+  [
+    "A curated list of contacts once your work is done,",
+    "to help you get it published.",
+  ],
+  [
+    "For licensed professionals,",
+    "a curated list of journals with their specific requirements set out in your guide.",
+  ],
+  [
+    "More application credits,",
+    "so you can apply to more projects on the platform.",
+  ],
+];
+
+// Amendment §8.7 — page copy making clear benefits follow from posting, without
+// making it sound like a hurdle.
+export const BENEFITS_AVAILABILITY_NOTE =
+  "These become available once you have posted your project on Symposed. Post it, and we will be in touch.";
+
+// §3.1.2 — four steps, shown with icons. Copy avoids implying that a person
+// performs the literature searching manually (amendment §4.3 boundary).
 export const HOW_IT_WORKS_STEPS: [string, string][] = [
   [
-    "Tell us about your interests",
+    "Tell us your requirements",
     "Complete a short proforma about your specialty, your topic and how much time you have.",
   ],
   [
-    "We research the literature",
-    "We search the published evidence and registered protocols to find a question that is genuinely open and genuinely doable.",
+    "We search the literature",
+    "Using our own developed and tested approach, we find a question that is genuinely open and genuinely doable.",
   ],
   [
-    "You receive your guide within 5 working days",
+    "You receive your guide within 7 working days",
     "Everything above, built around your specific project.",
   ],
   [
@@ -128,7 +236,7 @@ export const HOW_IT_WORKS_STEPS: [string, string][] = [
 export const GUIDE_FAQ: [string, string][] = [
   [
     "Do I need a supervisor to start?",
-    "No — that's the point of the guide. It also tells you exactly who to approach in your field when you do need one, with a template for the email.",
+    "No. That is the point of the guide. It also tells you exactly who to approach in your field when you do need one, with a template for the email.",
   ],
   [
     "Will this write my paper for me?",
@@ -136,7 +244,7 @@ export const GUIDE_FAQ: [string, string][] = [
   ],
   [
     "Do I need to declare this to a journal?",
-    "Yes, and we give you the wording. Most journals now require methodological and AI assistance to be disclosed — your guide includes a disclosure statement you can copy into your methods and acknowledgements.",
+    "Yes, and we give you the wording. Most journals now require methodological and AI assistance to be disclosed. Your guide includes a disclosure statement you can copy into your methods and acknowledgements.",
   ],
   [
     "What if I have no research experience at all?",
@@ -148,11 +256,11 @@ export const GUIDE_FAQ: [string, string][] = [
   ],
   [
     "Can I buy a guide with collaborators?",
-    "Yes — one guide, shared. Only one of you needs to buy it.",
+    "Yes. One guide, shared. Only one of you needs to buy it.",
   ],
   [
-    "What is the refund policy?",
-    "If your question turns out to have been already answered, you get a full refund and a free replacement guide — see the guarantee above. Full details are in our terms.",
+    "What if the question turns out to be already published?",
+    "Contact us within 30 days with the citation. We will work with you to refine the title, the angle and the workflow, and issue you a modified guide at no cost. This does not affect your statutory rights. See the commitment above.",
   ],
 ];
 
@@ -175,8 +283,8 @@ export function formatPounds(pence: number): string {
     : `£${(pence / 100).toFixed(2)}`;
 }
 
-// Launch mode: an introductory price of 0 renders as "Free" and checkout
-// completes without Stripe.
+// Launch mode: a price of 0 renders as "Free" and checkout completes without
+// Stripe.
 export function formatPriceLabel(pence: number): string {
   return pence === 0 ? "Free" : formatPounds(pence);
 }

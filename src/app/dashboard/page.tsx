@@ -4,11 +4,17 @@ import { requireUser, ensureProfile } from "@/lib/auth";
 import { CAREER_STAGES } from "@/lib/profile";
 import { getProjectsByOwner } from "@/lib/queries/projects";
 import { getProfileCertifications, getProfileSkills } from "@/lib/queries/profiles";
+import { getApplicationAllowance } from "@/lib/queries/applications";
+import { TIER_LABEL } from "@/lib/queries/entitlements";
+import { getProjectRecord, getSupportState } from "@/lib/queries/member";
 import { resendEmailConfirmation } from "@/app/auth/actions";
+import { askSupportQuestion } from "@/app/dashboard/actions";
 import { ProjectCard } from "@/components/project-card";
 import { VerifiedPill } from "@/components/verified-badge";
+import { SubmitButton } from "@/components/submit-button";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Card,
   CardContent,
@@ -19,20 +25,24 @@ import {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ confirmation?: string }>;
+  searchParams: Promise<{ confirmation?: string; support?: string }>;
 }) {
   const user = await requireUser();
   const profile = await ensureProfile(user);
-  const { confirmation } = await searchParams;
+  const { confirmation, support } = await searchParams;
   // Only nag about confirmation when we can actually send the email.
   const emailProviderConfigured = Boolean(
     process.env.RESEND_API_KEY && process.env.RESEND_FROM
   );
-  const [myProjects, skillNames, certifications] = await Promise.all([
-    getProjectsByOwner(user.id),
-    getProfileSkills(user.id),
-    getProfileCertifications(user.id),
-  ]);
+  const [myProjects, skillNames, certifications, allowance, record, supportState] =
+    await Promise.all([
+      getProjectsByOwner(user.id),
+      getProfileSkills(user.id),
+      getProfileCertifications(user.id),
+      getApplicationAllowance(user.id),
+      getProjectRecord(user.id),
+      getSupportState(user.id),
+    ]);
 
   const stageLabel =
     CAREER_STAGES.find((s) => s.value === profile.careerStage)?.label ?? "Not set";
@@ -75,7 +85,7 @@ export default async function DashboardPage({
       {emailProviderConfigured && !profile.emailConfirmedAt && (
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
           {confirmation === "sent" ? (
-            <p>Confirmation email sent — check your inbox (and spam folder).</p>
+            <p>Confirmation email sent, check your inbox (and spam folder).</p>
           ) : (
             <>
               <p>
@@ -178,6 +188,148 @@ export default async function DashboardPage({
               </p>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Membership, credits and track record (§8.3 / §8.9) */}
+      <div className="mt-8 grid gap-4 sm:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Membership and credits</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm">
+            <p>
+              <Badge variant="outline">{TIER_LABEL[allowance.tier]}</Badge>
+            </p>
+            <p className="mt-3">
+              <span className="text-2xl font-semibold tabular-nums">
+                {allowance.remaining}
+              </span>{" "}
+              <span className="text-muted-foreground">
+                of {allowance.limit} applications left this week
+              </span>
+            </p>
+            {allowance.remaining === 0 && allowance.resetsAt && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Resets {allowance.resetsAt.toLocaleDateString("en-GB")}.
+              </p>
+            )}
+            {allowance.tier === "standard" && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Post a project to move up to 6 per week, or list the project
+                from a Symposed guide for 9.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Your track record</CardTitle>
+              <Link
+                href="/profile/record"
+                className={buttonVariants({ variant: "ghost", size: "sm" })}
+              >
+                Export
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent className="text-sm">
+            <dl className="grid grid-cols-3 gap-2 text-center">
+              <div>
+                <dt className="text-xs text-muted-foreground">Led</dt>
+                <dd className="text-2xl font-semibold tabular-nums">
+                  {record.led.length}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Recruited</dt>
+                <dd className="text-2xl font-semibold tabular-nums">
+                  {record.collaboratorsRecruited}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Joined</dt>
+                <dd className="text-2xl font-semibold tabular-nums">
+                  {record.joined.length}
+                </dd>
+              </div>
+            </dl>
+            <p className="mt-3 text-xs text-muted-foreground">
+              We confirm what happened, and nothing more.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Direct support (§8.8) */}
+      <Card className="mt-4">
+        <CardHeader>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-base">Direct support</CardTitle>
+            {supportState.eligible && (
+              <span className="text-sm text-muted-foreground">
+                {supportState.remaining} of {supportState.allowance} questions left
+              </span>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="text-sm">
+          {support === "asked" && (
+            <p className="mb-3 rounded-md border border-success/30 bg-success/10 px-3 py-2">
+              Question received. We usually reply within {supportState.responseDays}{" "}
+              working days.
+            </p>
+          )}
+          {support && support !== "asked" && (
+            <p className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              {support}
+            </p>
+          )}
+          {!supportState.eligible ? (
+            <p className="text-muted-foreground">
+              Ask us about your methodology, screening decisions or analysis.
+              This becomes available once you have a live project listing.
+            </p>
+          ) : supportState.remaining > 0 ? (
+            <form action={askSupportQuestion} className="flex flex-col gap-2">
+              <Textarea
+                name="question"
+                rows={3}
+                required
+                placeholder="Ask about your methodology, screening decisions or analysis."
+              />
+              <p className="text-xs text-muted-foreground">
+                We usually reply within {supportState.responseDays} working days.
+              </p>
+              <SubmitButton size="sm" className="self-start" pendingLabel="Sending...">
+                Ask a question
+              </SubmitButton>
+            </form>
+          ) : (
+            <p className="text-muted-foreground">
+              You have used your {supportState.allowance} support questions. Get
+              in touch if you need more.
+            </p>
+          )}
+
+          {supportState.questions.length > 0 && (
+            <ul className="mt-4 flex flex-col gap-3 border-t pt-4">
+              {supportState.questions.map((q) => (
+                <li key={q.id}>
+                  <p className="font-medium">{q.question}</p>
+                  {q.answer ? (
+                    <p className="mt-1 text-muted-foreground">{q.answer}</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Awaiting a reply.
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 

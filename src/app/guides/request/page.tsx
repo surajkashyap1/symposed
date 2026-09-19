@@ -1,5 +1,7 @@
 import { requireUser, ensureProfile } from "@/lib/auth";
 import {
+  COLLABORATOR_HELP,
+  COLLABORATOR_OPTIONS,
   DATABASE_OPTIONS,
   DELIVERY_PROMISE,
   GUIDE_GRADES,
@@ -10,6 +12,7 @@ import {
   SUPERVISOR_OPTIONS,
   TIMELINE_OPTIONS,
   TOPIC_MAX_CHARS,
+  YES_NO_OPTIONS,
 } from "@/lib/guides-meta";
 import { submitGuideProforma } from "@/app/guides/actions";
 import { Button } from "@/components/ui/button";
@@ -25,7 +28,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const metadata = { title: "Start your guide — Symposed" };
+export const metadata = { title: "Start your guide | Symposed" };
 
 const toOptions = (values: readonly string[]) =>
   values.map((v) => ({ value: v, label: v }));
@@ -116,7 +119,7 @@ export default async function GuideRequestPage({
                   name="specialtyUndecided"
                   className="h-4 w-4 rounded border-input accent-primary"
                 />
-                Undecided — recommend a field that suits my interests
+                Undecided, recommend a field that suits my interests
               </label>
             </div>
 
@@ -217,15 +220,45 @@ export default async function GuideRequestPage({
 
             <div className="grid gap-2">
               <Label htmlFor="collaborators">
-                Will you be working with collaborators? (optional, how many)
+                How many other people are you comfortable involving in this
+                project?
               </Label>
-              <Input
+              <Select
                 id="collaborators"
                 name="collaborators"
-                type="number"
-                min="0"
-                max="20"
+                required
+                placeholder="Choose"
+                options={toOptions(COLLABORATOR_OPTIONS)}
               />
+              <p className="text-xs text-muted-foreground">{COLLABORATOR_HELP}</p>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor="patientData">
+                  Do you have access to a patient population or department
+                  dataset?
+                </Label>
+                <Select
+                  id="patientData"
+                  name="patientData"
+                  required
+                  placeholder="Choose"
+                  options={toOptions(YES_NO_OPTIONS)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="nonEnglish">
+                  Can you work with non-English language papers?
+                </Label>
+                <Select
+                  id="nonEnglish"
+                  name="nonEnglish"
+                  required
+                  placeholder="Choose"
+                  options={toOptions(YES_NO_OPTIONS)}
+                />
+              </div>
             </div>
 
             <div className="grid gap-2">

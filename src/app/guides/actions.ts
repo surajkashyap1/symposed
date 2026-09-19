@@ -10,6 +10,7 @@ import { requireUser, ensureProfile } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
 import { isUuid } from "@/lib/utils";
 import {
+  COLLABORATOR_OPTIONS,
   DATABASE_OPTIONS,
   GUIDE_GRADES,
   HOURS_OPTIONS,
@@ -19,6 +20,7 @@ import {
   SUPERVISOR_OPTIONS,
   TIMELINE_OPTIONS,
   TOPIC_MAX_CHARS,
+  YES_NO_OPTIONS,
 } from "@/lib/guides-meta";
 import {
   getPricingState,
@@ -51,6 +53,9 @@ export async function submitGuideProforma(formData: FormData) {
   const timeline = String(formData.get("timeline") ?? "");
   const statsConfidence = String(formData.get("statsConfidence") ?? "");
   const supervisor = String(formData.get("supervisor") ?? "");
+  const collaborators = String(formData.get("collaborators") ?? "");
+  const patientData = String(formData.get("patientData") ?? "");
+  const nonEnglish = String(formData.get("nonEnglish") ?? "");
   const specialtyUndecided = formData.get("specialtyUndecided") === "on";
 
   const specialties = String(formData.get("specialties") ?? "")
@@ -83,8 +88,15 @@ export async function submitGuideProforma(formData: FormData) {
     fail("Please say whether you have a supervisor.");
   if (databases.length === 0)
     fail("Pick at least one database access option (or 'Unsure').");
+  // §7.1 — required, no zero option: every project we design needs at least
+  // one collaborator.
+  if (!oneOf(collaborators, COLLABORATOR_OPTIONS))
+    fail("Please say how many other people you are comfortable involving.");
+  if (!oneOf(patientData, YES_NO_OPTIONS))
+    fail("Please say whether you have access to a patient population or dataset.");
+  if (!oneOf(nonEnglish, YES_NO_OPTIONS))
+    fail("Please say whether you can work with non-English language papers.");
 
-  const collaboratorsRaw = String(formData.get("collaborators") ?? "").trim();
   const proforma = {
     grade,
     institution,
@@ -98,7 +110,9 @@ export async function submitGuideProforma(formData: FormData) {
     statsConfidence,
     databases,
     supervisor,
-    collaborators: collaboratorsRaw ? Number.parseInt(collaboratorsRaw, 10) : null,
+    collaborators,
+    patientData,
+    nonEnglish,
     anythingElse: String(formData.get("anythingElse") ?? "").trim() || null,
   };
 
@@ -139,7 +153,7 @@ export async function submitGuideProforma(formData: FormData) {
     orderId = created.id;
 
     // "Proforma received" (spec §6.3): sets expectations and restates the
-    // 5-working-day turnaround from payment.
+    // 7-working-day turnaround from payment.
     const base = process.env.NEXT_PUBLIC_SITE_URL ?? "";
     await sendEmail({
       to: email,
@@ -147,7 +161,7 @@ export async function submitGuideProforma(formData: FormData) {
       text: [
         `Hi ${fullName},`,
         "",
-        "Thanks — we've received your proforma. Nothing has been charged yet: the next step is reviewing your summary and paying, after which your guide is delivered within 5 working days.",
+        "Thanks. We've received your proforma. Nothing has been charged yet: the next step is reviewing your summary and paying, after which your guide is delivered within 7 working days.",
         "",
         `Pick up where you left off any time: ${base}/guides/checkout?order=${orderId}`,
       ].join("\n"),
@@ -203,22 +217,27 @@ export async function startGuideCheckout(formData: FormData) {
 
   // Race-safe server-side price resolution.
   const { amountPence } = await reserveCheckoutPrice(orderId);
+  const pricing = await getPricingState();
 
-  // If the price moved while the page was open, confirm before charging.
-  const shownPence = Number.parseInt(String(formData.get("shownPence") ?? ""), 10);
-  if (!Number.isNaN(shownPence) && shownPence !== amountPence)
-    fail(`priceChanged=${amountPence}`);
-
-  // Free introductory guides (launch mode): no payment to take, so no Stripe
-  // round-trip — the order completes right here, atomically holding its slot.
-  if (amountPence === 0) {
+  // No payment to take when the payments toggle is off (launch default) OR the
+  // guide is free (amendment §2): skip Stripe and complete the order here so
+  // the request goes straight to the queue. This must run BEFORE the
+  // price-change guard below: with payments off the page always shows £0, so
+  // once the free allocation is used up the ladder price would otherwise
+  // trip `priceChanged` and no request could ever be queued.
+  if (!pricing.paymentsEnabled || amountPence === 0) {
     await completeFreeOrder(orderId);
     redirect(`/guides/thanks?order=${orderId}`);
   }
 
-  // Country allow-list (spec §7.6–7.8) matters only when money moves:
+  // Paid path only: if the price moved while the page was open, confirm before
+  // charging.
+  const shownPence = Number.parseInt(String(formData.get("shownPence") ?? ""), 10);
+  if (!Number.isNaN(shownPence) && shownPence !== amountPence)
+    fail(`priceChanged=${amountPence}`);
+
+  // Country allow-list (spec §7.6 to 7.8) matters only when money moves:
   // blocked markets get a polite message, not a broken checkout.
-  const pricing = await getPricingState();
   if (ipCountry && pricing.blockedCountries.includes(ipCountry))
     fail("blocked=1");
 
@@ -249,7 +268,7 @@ export async function startGuideCheckout(formData: FormData) {
   } catch {
     fail(
       "error=" +
-        encodeURIComponent("Could not start checkout. Nothing has been charged — please try again.")
+        encodeURIComponent("Could not start checkout. Nothing has been charged, please try again.")
     );
   }
 
@@ -281,9 +300,9 @@ async function completeFreeOrder(orderId: string) {
     text: [
       `Hi ${order.fullName},`,
       "",
-      "Your Publication Guide is confirmed. Your guide is delivered within 5 working days.",
+      "Your Publication Guide is confirmed. Your guide is delivered within 7 working days.",
       "",
-      `A person now researches your topic, verifies that your question is genuinely open, and builds the guide around it. It will appear in "My guides" (${base}/guides/mine) and we'll email you the moment it's ready.`,
+      `We now research your topic using our own developed and tested approach, verify that your question is genuinely open, and build the guide around it. It will appear in "My guides" (${base}/guides/mine) and we'll email you the moment it's ready.`,
       "",
       "While you wait: your guide ends with a project ready to run. You can already post it on Symposed to recruit collaborators:",
       `${base}/projects/new`,
@@ -297,7 +316,7 @@ async function completeFreeOrder(orderId: string) {
     await sendEmail({
       to: inbox,
       subject: `Guide order confirmed (free intro): ${order.fullName}`,
-      text: `Order ${order.id} is confirmed at the free introductory price. The 5-working-day delivery clock is running.\n\n${base}/admin/guides`,
+      text: `Order ${order.id} is confirmed at no charge. The 7-working-day delivery clock is running.\n\n${base}/admin/guides`,
     });
   }
 }

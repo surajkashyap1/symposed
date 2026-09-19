@@ -18,7 +18,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const metadata = { title: "Review your guide — Symposed" };
+export const metadata = { title: "Review your guide | Symposed" };
 
 // Single-use review link from the delivery email (spec §3.5): no login —
 // the token identifies the buyer.
@@ -48,7 +48,7 @@ export default async function GuideReviewPage({
         <CardHeader>
           <CardTitle>How was your guide?</CardTitle>
           <CardDescription>
-            Honest words only — we publish reviews as written, after a spam
+            Honest words only, we publish reviews as written, after a spam
             check. You can request removal of your review at any time from
             this same link.
           </CardDescription>
@@ -62,7 +62,7 @@ export default async function GuideReviewPage({
             <div className="flex flex-col gap-4">
               <p className="rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm">
                 {done
-                  ? "Thank you — your review has been submitted and will appear once it clears a quick spam check."
+                  ? "Thank you, your review has been submitted and will appear once it clears a quick spam check."
                   : "You've already reviewed this guide."}
               </p>
               <form action={requestGuideReviewRemoval}>
@@ -90,7 +90,7 @@ export default async function GuideReviewPage({
                   placeholder="Out of 5"
                   options={[5, 4, 3, 2, 1].map((n) => ({
                     value: String(n),
-                    label: `${n} — ${["", "poor", "fair", "good", "very good", "excellent"][n]}`,
+                    label: `${n}, ${["", "poor", "fair", "good", "very good", "excellent"][n]}`,
                   }))}
                 />
               </div>

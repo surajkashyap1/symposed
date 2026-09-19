@@ -12,14 +12,12 @@ export const WORD_LIMITS = {
   skillsSummary: 100,
 } as const;
 
-// Rate limiting (ROADMAP §3 / plan §6, §8): 3 applications per rolling 7 days.
-// Users who have posted a project earn a bonus allowance (see plan §8 — "post a
-// research project with a validated supervisor email → 3 extra applications").
-// Until the student-with-supervisor posting flow lands, "has posted a project"
-// is the proxy for eligibility.
+// Weekly rolling application window (amendment §8.9). The per-week limit now
+// varies by member tier (standard 3 / project lister 6 / guide lister 9) and
+// is resolved from platform_config via getEntitlements, recomputed from current
+// state each time. See src/lib/queries/entitlements.ts and
+// getApplicationAllowance.
 export const APPLICATION_WINDOW_DAYS = 7;
-export const BASE_APPLICATION_LIMIT = 3;
-export const BONUS_APPLICATION_LIMIT = 3;
 
 export const STATUS_LABELS: Record<ApplicationStatus, string> = {
   pending: "Pending",

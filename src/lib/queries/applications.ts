@@ -11,11 +11,10 @@ import {
 } from "@/db/schema";
 import {
   APPLICATION_WINDOW_DAYS,
-  BASE_APPLICATION_LIMIT,
-  BONUS_APPLICATION_LIMIT,
   countWords,
   type ApplicationStatus,
 } from "@/lib/application-meta";
+import { getEntitlements, type MemberTier } from "@/lib/queries/entitlements";
 import { projectTypeLabel } from "@/lib/project-meta";
 import { scoreApplicant, type RankingResult } from "@/lib/ranking";
 
@@ -28,20 +27,21 @@ export type ApplicationAllowance = {
   limit: number;
   remaining: number;
   bonus: boolean;
+  tier: MemberTier;
   windowDays: number;
   resetsAt: Date | null;
 };
 
-// Rolling-window allowance (ROADMAP §3). Computed in app logic, not a table —
-// see the applications_applicant_time_idx index that backs this lookup.
+// Weekly rolling allowance (amendment §8.9): the limit varies by member tier
+// (standard 3 / project lister 6 / guide lister 9), and the tier is recomputed
+// from CURRENT STATE every time (§8.7) via getEntitlements — never from a
+// stored "has posted" flag. Backed by applications_applicant_time_idx.
 export async function getApplicationAllowance(
   applicantId: string
 ): Promise<ApplicationAllowance> {
   const since = windowStart(APPLICATION_WINDOW_DAYS);
 
-  // These two counts are independent — run them in one round trip's worth of
-  // wall time instead of two sequential ones.
-  const [[{ value: used }], [{ value: posted }]] = await Promise.all([
+  const [[{ value: used }], entitlements] = await Promise.all([
     db
       .select({ value: count() })
       .from(applications)
@@ -51,16 +51,11 @@ export async function getApplicationAllowance(
           gte(applications.createdAt, since)
         )
       ),
-    // Bonus eligibility: the user has posted at least one project (plan §8).
-    db
-      .select({ value: count() })
-      .from(projects)
-      .where(eq(projects.ownerId, applicantId)),
+    getEntitlements(applicantId),
   ]);
 
-  const bonus = posted > 0;
-  const limit =
-    BASE_APPLICATION_LIMIT + (bonus ? BONUS_APPLICATION_LIMIT : 0);
+  const limit = entitlements.weeklyCredits;
+  const bonus = entitlements.tier !== "standard";
 
   // When the oldest application in the window ages out, one slot frees up.
   let resetsAt: Date | null = null;
@@ -88,6 +83,7 @@ export async function getApplicationAllowance(
     limit,
     remaining: Math.max(0, limit - used),
     bonus,
+    tier: entitlements.tier,
     windowDays: APPLICATION_WINDOW_DAYS,
     resetsAt,
   };

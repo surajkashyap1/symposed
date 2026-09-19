@@ -103,22 +103,22 @@ export async function POST(request: Request) {
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? "";
   await sendEmail({
     to: order.email,
-    subject: "Symposed: payment received — your guide is underway",
+    subject: "Symposed: payment received, your guide is underway",
     text: [
       `Hi ${order.fullName},`,
       "",
-      `Thanks — we've received your payment of ${formatPounds(order.pricePaidPence ?? order.priceAtCheckoutPence ?? 0)} for a Symposed Publication Guide. This email is your receipt.`,
+      `Thanks, we've received your payment of ${formatPounds(order.pricePaidPence ?? order.priceAtCheckoutPence ?? 0)} for a Symposed Publication Guide. This email is your receipt.`,
       "",
-      `${DELIVERY_PROMISE} A person now researches your topic, verifies that your question is genuinely open, and builds the guide around it. It will appear in "My guides" (${base}/guides/mine) and we'll email you the moment it's ready.`,
+      `${DELIVERY_PROMISE} We now research your topic using our own developed and tested approach, verify that your question is genuinely open, and build the guide around it. It will appear in "My guides" (${base}/guides/mine) and we'll email you the moment it's ready.`,
       "",
       "While you wait: your guide ends with a project ready to run. You can already post it on Symposed to recruit collaborators:",
       `${base}/projects/new`,
       "",
-      "The guarantee: if the review your guide is built around has already been published, we refund you in full and produce a replacement guide on a different question at no cost.",
+      "Our commitment: if you believe the question in your guide has already been published, contact us within 30 days with the citation and we will refine the title, the angle and the workflow and issue you a modified guide at no cost. This does not affect your statutory rights.",
     ].join("\n"),
   });
 
-  // Admin heads-up so the 5-working-day clock starts consciously.
+  // Admin heads-up so the 7-working-day clock starts consciously.
   const inbox =
     process.env.CONTACT_INBOX ??
     (process.env.ADMIN_EMAILS ?? "").split(",")[0]?.trim();
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
     await sendEmail({
       to: inbox,
       subject: `Guide order paid: ${order.fullName} (${formatPounds(order.pricePaidPence ?? 0)})`,
-      text: `Order ${order.id} is paid${order.discountApplied ? " (introductory price)" : ""}. The 5-working-day delivery clock is running.\n\n${base}/admin`,
+      text: `Order ${order.id} is paid${order.discountApplied ? " (discounted price)" : ""}. The 7-working-day delivery clock is running.\n\n${base}/admin`,
     });
   }
 

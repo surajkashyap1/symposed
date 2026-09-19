@@ -34,7 +34,7 @@ export default function PoliciesPage() {
         {POLICIES.map((p) => (
           <li key={p.href}>
             <Link href={p.href}>{p.label}</Link>{" "}
-            <span className="text-muted-foreground">— {p.blurb}</span>
+            <span className="text-muted-foreground">, {p.blurb}</span>
           </li>
         ))}
       </ul>

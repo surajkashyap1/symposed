@@ -15,7 +15,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const metadata = { title: "Confirm your email — Symposed" };
+export const metadata = { title: "Confirm your email | Symposed" };
 
 export default async function SignupConfirmPage({
   searchParams,
@@ -64,7 +64,7 @@ export default async function SignupConfirmPage({
         <CardContent className="flex flex-col gap-4">
           {resent && (
             <p className="rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm">
-              A new code is on its way — check your inbox (and spam folder).
+              A new code is on its way, check your inbox (and spam folder).
             </p>
           )}
           {error && (

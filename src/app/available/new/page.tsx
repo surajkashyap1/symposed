@@ -18,7 +18,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const metadata = { title: "Advertise yourself — Symposed" };
+export const metadata = { title: "Advertise yourself | Symposed" };
 
 export default async function NewListingPage({
   searchParams,
@@ -83,7 +83,7 @@ export default async function NewListingPage({
             <fieldset className="grid gap-2">
               <legend className="text-sm font-medium">Skills offered</legend>
               <p className="text-xs text-muted-foreground">
-                Pick everything you can genuinely do — listers filter by these.
+                Pick everything you can genuinely do, listers filter by these.
               </p>
               <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-3">
                 {SKILLS_OFFERED.map((s) => (
@@ -158,7 +158,7 @@ export default async function NewListingPage({
               <Input
                 id="previousPublications"
                 name="previousPublications"
-                placeholder="A count, or links — e.g. 2 (PubMed: …)"
+                placeholder="A count, or links, e.g. 2 (PubMed: …)"
                 defaultValue={existing?.previousPublications ?? ""}
               />
             </div>

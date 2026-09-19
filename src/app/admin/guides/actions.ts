@@ -3,10 +3,18 @@
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { guideOrderFiles, guideOrders, guidePricingConfig, guideReviews } from "@/db/schema";
+import {
+  guideOrderFiles,
+  guideOrders,
+  guidePricingConfig,
+  guideReviews,
+  supportQuestions,
+} from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { sendEmail } from "@/lib/email";
+import { notify } from "@/lib/notify";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { createDraftForOrder } from "@/lib/guide-listing";
 import { isUuid } from "@/lib/utils";
 
 const GUIDE_BUCKET = "guide-files";
@@ -56,7 +64,7 @@ export async function deliverOrder(formData: FormData) {
     String(formData.get("verifiedBy") ?? "").trim() || profile.fullName;
   const verificationNote = String(formData.get("verificationNote") ?? "").trim();
   if (!verificationNote)
-    fail("Record what was checked or changed — it's the evidence that a person verified this guide.");
+    fail("Record what was checked or changed, it's the evidence that a person verified this guide.");
 
   const files = formData
     .getAll("files")
@@ -105,6 +113,10 @@ export async function deliverOrder(formData: FormData) {
     })
     .where(eq(guideOrders.id, order.id));
 
+  // §8.4: auto-create the pre-populated DRAFT project listing on delivery.
+  // Never auto-published; the buyer publishes with one click from My guides.
+  await createDraftForOrder(order);
+
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? "";
   await sendEmail({
     to: order.email,
@@ -112,10 +124,10 @@ export async function deliverOrder(formData: FormData) {
     text: [
       `Hi ${order.fullName},`,
       "",
-      "Your guide is ready. Download it from your account — your files stay available indefinitely:",
+      "Your guide is ready. Download it from your account, your files stay available indefinitely:",
       `${base}/guides/mine`,
       "",
-      "Your guide ends with a project ready to run. Post it on Symposed to recruit collaborators — screeners, extractors, a statistician:",
+      "Your guide ends with a project ready to run. Post it on Symposed to recruit collaborators, screeners, extractors, a statistician:",
       `${base}/projects/new`,
       "",
       "If anything in the guide doesn't make sense, reply to this email.",
@@ -132,7 +144,7 @@ export async function deliverOrder(formData: FormData) {
         "If you have two minutes, a short review helps other students decide whether a guide is right for them. No login needed:",
         `${base}/guides/review/${order.reviewToken}`,
         "",
-        "We publish reviews as written — good or bad — after a quick spam check, and you can remove yours at any time from the same link.",
+        "We publish reviews as written, good or bad, after a quick spam check, and you can remove yours at any time from the same link.",
       ].join("\n"),
     });
   }
@@ -146,28 +158,64 @@ export async function updateGuidePricing(formData: FormData) {
   await requireAdmin();
   const standard = Math.round(Number(formData.get("standardPounds")) * 100);
   const intro = Math.round(Number(formData.get("introPounds")) * 100);
-  const quantity = Number.parseInt(String(formData.get("introQuantity") ?? ""), 10);
+  const introQuantity = Number.parseInt(String(formData.get("introQuantity") ?? ""), 10);
+  const freeQuantity = Number.parseInt(String(formData.get("freeQuantity") ?? ""), 10);
+  const paymentsEnabled = formData.get("paymentsEnabled") === "on";
   const blocked = String(formData.get("blockedCountries") ?? "")
     .toUpperCase()
     .split(",")
     .map((c) => c.trim())
     .filter((c) => /^[A-Z]{2}$/.test(c));
 
-  if (!Number.isFinite(standard) || standard <= 0 || !Number.isFinite(intro) || intro <= 0)
-    fail("Prices must be positive amounts in pounds.");
-  if (Number.isNaN(quantity) || quantity < 0)
-    fail("The introductory quantity must be 0 or more.");
+  // Standard is the top of the ladder and must be positive. The intro (£25)
+  // tier may be zero-priced if the admin wants two free bands.
+  if (!Number.isFinite(standard) || standard <= 0)
+    fail("The standard price must be a positive amount in pounds.");
+  if (!Number.isFinite(intro) || intro < 0)
+    fail("The intro price must be 0 or a positive amount in pounds.");
+  if (Number.isNaN(introQuantity) || introQuantity < 0)
+    fail("The intro tier quantity must be 0 or more.");
+  if (Number.isNaN(freeQuantity) || freeQuantity < 0)
+    fail("The free quantity must be 0 or more.");
 
   await db
     .update(guidePricingConfig)
     .set({
       standardPricePence: standard,
       introPricePence: intro,
-      introQuantity: quantity,
+      introQuantity,
+      freeQuantity,
+      paymentsEnabled,
       blockedCountries: blocked,
       updatedAt: new Date(),
     })
     .where(eq(guidePricingConfig.id, 1));
+  redirect("/admin/guides");
+}
+
+// Amendment §8.8 — answer a queued support question. Notifies the member in
+// app (and by email when configured).
+export async function answerSupportQuestion(formData: FormData) {
+  await requireAdmin();
+  const id = String(formData.get("id") ?? "");
+  const answer = String(formData.get("answer") ?? "").trim();
+  if (!isUuid(id)) redirect("/admin/guides");
+  if (!answer) fail("Write an answer before sending.");
+
+  const [row] = await db
+    .update(supportQuestions)
+    .set({ answer, answeredAt: new Date() })
+    .where(eq(supportQuestions.id, id))
+    .returning();
+  if (row) {
+    await notify({
+      profileId: row.profileId,
+      type: "system",
+      title: "Your support question has been answered",
+      body: answer.slice(0, 300),
+      link: "/dashboard",
+    });
+  }
   redirect("/admin/guides");
 }
 

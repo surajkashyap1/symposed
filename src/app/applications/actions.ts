@@ -148,7 +148,7 @@ export async function submitApplication(formData: FormData) {
   const base = process.env.NEXT_PUBLIC_SITE_URL ?? "";
   await sendEmail({
     to: applicant.email,
-    subject: `Symposed: application sent — ${project.title}`,
+    subject: `Symposed: application sent, ${project.title}`,
     text: [
       `Hi ${applicant.fullName},`,
       "",

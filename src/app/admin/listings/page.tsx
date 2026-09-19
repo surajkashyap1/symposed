@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
-export const metadata = { title: "Listings admin — Symposed" };
+export const metadata = { title: "Listings admin | Symposed" };
 
 export default async function AdminListingsPage() {
   await requireAdmin();

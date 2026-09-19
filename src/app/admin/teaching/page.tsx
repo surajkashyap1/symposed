@@ -15,7 +15,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export const metadata = { title: "Teaching admin — Symposed" };
+export const metadata = { title: "Teaching admin | Symposed" };
 
 const CLINICIAN_BADGE: Record<string, string> = {
   pending:
@@ -92,7 +92,7 @@ export default async function AdminTeachingPage({
                 </ul>
                 <p className="text-xs">
                   <span className="text-muted-foreground">Clinician:</span>{" "}
-                  {s.clinicianName} — {s.clinicianGrade},{" "}
+                  {s.clinicianName}, {s.clinicianGrade},{" "}
                   {s.clinicianSpecialty}, {s.clinicianInstitution} · GMC{" "}
                   {s.clinicianGmcNumber}{" "}
                   <a

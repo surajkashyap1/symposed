@@ -10,7 +10,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-export const metadata = { title: "Confirm review — Symposed" };
+export const metadata = { title: "Confirm review | Symposed" };
 
 // Reached from the email sent to the named approving clinician. No login —
 // the single-use token is the identity (spec §4.2).
@@ -50,7 +50,7 @@ export default async function ClinicianVerifyPage({
             <div>
               <dt className="text-muted-foreground">Named clinician</dt>
               <dd className="mt-0.5 font-medium">
-                {submission.clinicianName} — {submission.clinicianGrade},{" "}
+                {submission.clinicianName}, {submission.clinicianGrade},{" "}
                 {submission.clinicianSpecialty},{" "}
                 {submission.clinicianInstitution}
               </dd>
@@ -66,7 +66,7 @@ export default async function ClinicianVerifyPage({
               }`}
             >
               {done
-                ? "Thank you — your response has been recorded."
+                ? "Thank you, your response has been recorded."
                 : `This request has already been ${
                     submission.clinicianStatus === "confirmed"
                       ? "confirmed"
@@ -86,7 +86,7 @@ export default async function ClinicianVerifyPage({
                 <form action={respondToClinicianRequest}>
                   <input type="hidden" name="token" value={token} />
                   <input type="hidden" name="decision" value="confirm" />
-                  <Button type="submit">Confirm — I&apos;ll review it</Button>
+                  <Button type="submit">Confirm, I&apos;ll review it</Button>
                 </form>
                 <form action={respondToClinicianRequest}>
                   <input type="hidden" name="token" value={token} />

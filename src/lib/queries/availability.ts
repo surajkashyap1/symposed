@@ -64,6 +64,37 @@ export type ListAvailabilityOptions = {
 
 export const AVAILABILITY_PAGE_SIZE = 12;
 
+// Amendment §8.6 — collaborator matches for a project's listing nudge. Returns
+// up to `limit` users from the live Available board whose stated skills or
+// specialty match, excluding the project owner. Only currently live listings
+// are ever returned. The caller omits the section entirely if fewer than 3.
+export async function getCollaboratorMatches(opts: {
+  ownerId: string;
+  specialty?: string | null;
+  skills?: string[];
+  limit?: number;
+}): Promise<AvailabilityListItem[]> {
+  const match: ReturnType<typeof ilike>[] = [];
+  if (opts.specialty) match.push(ilike(availabilityListings.specialties, `%${opts.specialty}%`));
+  for (const s of opts.skills ?? []) {
+    match.push(sql`${availabilityListings.skills} && array[${s}]::text[]` as never);
+  }
+
+  return db
+    .select(listColumns)
+    .from(availabilityListings)
+    .leftJoin(profiles, eq(profiles.id, availabilityListings.profileId))
+    .where(
+      and(
+        ...liveConds(),
+        sql`${availabilityListings.profileId} <> ${opts.ownerId}`,
+        ...(match.length > 0 ? [or(...match)!] : [])
+      )
+    )
+    .orderBy(desc(availabilityListings.updatedAt))
+    .limit(opts.limit ?? 5);
+}
+
 export async function listAvailability(opts: ListAvailabilityOptions): Promise<{
   items: AvailabilityListItem[];
   total: number;

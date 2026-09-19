@@ -11,18 +11,26 @@ import {
   DELIVERY_PROMISE,
   GUARANTEE_PARAGRAPHS,
   GUIDE_FAQ,
+  GUIDE_PANELS,
+  HERO_DESCRIPTION,
   HOW_IT_WORKS_STEPS,
-  WHAT_IS_INCLUDED,
+  METHOD_STATEMENT,
   formatPounds,
 } from "@/lib/guides-meta";
-import { getPricingState, getPublishedGuideReviews } from "@/lib/queries/guides";
+import {
+  getPricingState,
+  getPublishedGuideReviews,
+  type PricingState,
+} from "@/lib/queries/guides";
+import { GuidePanels } from "@/components/guide-panels";
+import { ListingBenefits } from "@/components/listing-benefits";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 
 export const metadata = {
-  title: "Publication Guides — Symposed",
+  title: "Publication Guides | Symposed",
   description:
-    "A bespoke, human-verified guide to your first publishable research project: a verified question, full search strategy, protocol and method walkthrough, delivered within 5 working days.",
+    "A bespoke, verified guide to your first publishable review: a verified question, full search strategy, protocol and method walkthrough, delivered within 7 working days.",
 };
 
 const STEP_ICONS = [ClipboardPen, FileSearch, BookOpenCheck, Rocket];
@@ -41,15 +49,60 @@ function ReviewStars({ value }: { value: number }) {
   );
 }
 
+// Amendment §2 price block. The free line and the standard line appear
+// together at all times so the value of the free allocation is visible; the
+// middle (£25) tier line shows only while it is the operative band or the
+// next one up. When the free count reaches zero the free line is removed
+// rather than left showing zero.
+function PriceBlock({ pricing }: { pricing: PricingState }) {
+  const hasMiddle =
+    pricing.introQuantity > 0 &&
+    pricing.introPricePence > 0 &&
+    pricing.introPricePence < pricing.standardPricePence;
+  const freeLeft = pricing.freeRemainingPublic;
+  const introLeft = pricing.introRemainingPublic;
+
+  return (
+    <div className="flex flex-col gap-1 text-sm">
+      {freeLeft > 0 && (
+        <p>
+          <span className="font-semibold text-foreground">
+            The first {pricing.freeQuantity} guides are free.
+          </span>{" "}
+          <span className="font-medium text-primary">
+            {freeLeft} of {pricing.freeQuantity} remaining.
+          </span>
+        </p>
+      )}
+      {hasMiddle && introLeft > 0 && (
+        <p className="text-muted-foreground">
+          The next {pricing.introQuantity} guides are{" "}
+          {formatPounds(pricing.introPricePence)} each
+          {freeLeft === 0 && (
+            <>
+              {" "}
+              <span className="font-medium text-primary">
+                ({introLeft} of {pricing.introQuantity} remaining)
+              </span>
+            </>
+          )}
+          .
+        </p>
+      )}
+      <p className={freeLeft > 0 || introLeft > 0 ? "text-muted-foreground" : "font-semibold text-foreground"}>
+        {freeLeft > 0 || (hasMiddle && introLeft > 0)
+          ? `After that, guides are ${formatPounds(pricing.standardPricePence)} each.`
+          : `Guides are ${formatPounds(pricing.standardPricePence)} each, the total price, nothing added at checkout.`}
+      </p>
+    </div>
+  );
+}
+
 export default async function GuidesPage() {
   const [pricing, { reviews, average }] = await Promise.all([
     getPricingState(),
     getPublishedGuideReviews(),
   ]);
-  const introActive = pricing.introRemainingPublic > 0;
-  // Free launch mode: guides are simply free — no price, no counter, no
-  // scarcity copy anywhere on the page.
-  const freeMode = introActive && pricing.introPricePence === 0;
 
   return (
     <main className="flex-1">
@@ -59,39 +112,14 @@ export default async function GuidesPage() {
           A verified research question, and everything you need to answer it.
         </h1>
         <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-          Tell us your interests, and a person — not a pipeline — researches
-          the literature, finds a question that is genuinely open and genuinely
-          doable, and builds you a complete methodological foundation for your
-          first publication.
+          {HERO_DESCRIPTION}
         </p>
-        {/* While guides are free, no pricing or scarcity messaging at all —
-            the banner returns automatically once a real price is set. */}
-        {!freeMode && (
-          <div className="mt-6 inline-flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-secondary/50 px-4 py-3 text-sm">
-            {introActive ? (
-              <>
-                <span className="font-semibold text-foreground">
-                  Introductory price: {formatPounds(pricing.introPricePence)}{" "}
-                  per guide for the first {pricing.introQuantity} guides.
-                </span>
-                <span className="font-medium text-primary">
-                  {pricing.introRemainingPublic} of {pricing.introQuantity}{" "}
-                  remaining.
-                </span>
-                <span className="w-full text-muted-foreground">
-                  After the first {pricing.introQuantity} guides, the price
-                  returns to {formatPounds(pricing.standardPricePence)} per
-                  guide.
-                </span>
-              </>
-            ) : (
-              <span className="font-semibold text-foreground">
-                {formatPounds(pricing.standardPricePence)} per guide — the
-                total price, nothing added at checkout.
-              </span>
-            )}
-          </div>
-        )}
+        <p className="mt-4 max-w-2xl text-base font-medium leading-relaxed text-foreground">
+          {METHOD_STATEMENT}
+        </p>
+        <div className="mt-6 inline-flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-secondary/50 px-4 py-3">
+          <PriceBlock pricing={pricing} />
+        </div>
         <div className="mt-6">
           <Link href="/guides/request" className={buttonVariants({ size: "lg" })}>
             Start your guide
@@ -105,19 +133,12 @@ export default async function GuidesPage() {
           <h2 className="font-heading text-2xl font-semibold tracking-tight">
             What is included
           </h2>
-          <div className="mt-6 rounded-lg border bg-card p-6 sm:p-8">
-            <ul className="grid gap-x-10 gap-y-5 sm:grid-cols-2">
-              {WHAT_IS_INCLUDED.map(([lead, body]) => (
-                <li key={lead} className="text-sm leading-relaxed">
-                  <strong className="font-semibold text-foreground">
-                    {lead}
-                  </strong>{" "}
-                  <span className="text-muted-foreground">{body}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          <p className="mt-5 rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm font-semibold">
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+            What we build depends on your review type. Swipe or use the arrows
+            to see each one.
+          </p>
+          <GuidePanels panels={GUIDE_PANELS} />
+          <p className="mt-6 rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm font-semibold">
             {DELIVERY_PROMISE}
           </p>
         </div>
@@ -149,46 +170,29 @@ export default async function GuidesPage() {
       </section>
 
       {/* ------------------------------------------------------ price */}
-      {!freeMode && (
-        <section className="mx-auto w-full max-w-5xl px-6 pb-12">
-          <div className="rounded-lg border p-6 sm:p-8">
-            <h2 className="font-heading text-2xl font-semibold tracking-tight">
-              Price and availability
-            </h2>
-            {introActive ? (
-              <>
-                <p className="mt-4 text-lg">
-                  <strong>
-                    Introductory price: {formatPounds(pricing.introPricePence)}{" "}
-                    per guide for the first {pricing.introQuantity} guides.
-                  </strong>{" "}
-                  <span className="font-medium text-primary">
-                    {pricing.introRemainingPublic} of {pricing.introQuantity}{" "}
-                    remaining.
-                  </span>
-                </p>
-                <p className="mt-2 text-muted-foreground">
-                  After the first {pricing.introQuantity} guides, the price
-                  returns to {formatPounds(pricing.standardPricePence)} per
-                  guide.
-                </p>
-              </>
-            ) : (
-              <p className="mt-4 text-lg">
-                <strong>
-                  {formatPounds(pricing.standardPricePence)} per guide.
-                </strong>
-              </p>
-            )}
-            <p className="mt-3 text-sm text-muted-foreground">
-              The price shown is the total you pay — VAT-inclusive where
-              applicable, with no processing, booking or service fee added at
-              checkout. The counter is real: it only moves when a guide is
-              actually bought.
-            </p>
+      <section className="mx-auto w-full max-w-5xl px-6 pb-12">
+        <div className="rounded-lg border p-6 sm:p-8">
+          <h2 className="font-heading text-2xl font-semibold tracking-tight">
+            Price and availability
+          </h2>
+          <div className="mt-4">
+            <PriceBlock pricing={pricing} />
           </div>
-        </section>
-      )}
+          <p className="mt-3 text-sm text-muted-foreground">
+            The price shown is the total you pay: VAT-inclusive where
+            applicable, with no processing, booking or service fee added at
+            checkout. The counter is real. It only moves when a guide is
+            actually delivered.
+          </p>
+        </div>
+      </section>
+
+      {/* -------------------------------------- list your project (§8) */}
+      <section className="border-t bg-secondary/50">
+        <div className="mx-auto w-full max-w-5xl px-6 py-12">
+          <ListingBenefits />
+        </div>
+      </section>
 
       {/* ---------------------------------------------------- reviews */}
       {reviews.length > 0 && (
@@ -224,9 +228,9 @@ export default async function GuidesPage() {
                     <span className="font-medium text-foreground">
                       {r.reviewerName}
                     </span>{" "}
-                    — {r.reviewerRole}
+                    ({r.reviewerRole}
                     {r.reviewerInstitution ? `, ${r.reviewerInstitution}` : ""}
-                    {r.guideTopic ? ` · ${r.guideTopic}` : ""}
+                    {r.guideTopic ? ` · ${r.guideTopic}` : ""})
                   </figcaption>
                   {r.complimentaryGuide && (
                     <Badge
@@ -248,7 +252,7 @@ export default async function GuidesPage() {
         <div className="max-w-3xl rounded-lg border-2 border-success/40 bg-success/5 p-6 sm:p-8">
           <h2 className="flex items-center gap-2 font-heading text-2xl font-semibold tracking-tight">
             <ShieldCheck className="h-6 w-6 text-success" aria-hidden />
-            The guarantee
+            Our commitment
           </h2>
           {GUARANTEE_PARAGRAPHS.map((p, i) => (
             <p
@@ -285,12 +289,7 @@ export default async function GuidesPage() {
             Stop looking for a project. Start one.
           </h2>
           <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-            The proforma takes about five minutes.{" "}
-            {introActive &&
-              !freeMode &&
-              `${pricing.introRemainingPublic} discounted ${
-                pricing.introRemainingPublic === 1 ? "guide" : "guides"
-              } left at ${formatPounds(pricing.introPricePence)}.`}
+            The proforma takes about five minutes.
           </p>
           <Link
             href="/guides/request"

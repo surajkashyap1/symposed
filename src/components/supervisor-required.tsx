@@ -20,7 +20,7 @@ export function SupervisorRequired() {
           <CardDescription>
             Posting a project requires a verified account. Verify with a
             university or health-service email (e.g. <strong>.edu</strong>,{" "}
-            <strong>.ac.uk</strong>, <strong>.nhs.uk</strong>) — you can use a
+            <strong>.ac.uk</strong>, <strong>.nhs.uk</strong>), you can use a
             different address from the one you signed up with. No institutional
             email? Contact us and we&apos;ll verify you manually.
           </CardDescription>

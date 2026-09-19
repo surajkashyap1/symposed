@@ -3,7 +3,9 @@ import { db } from "@/db";
 import { guideOrders, guidePricingConfig, guideReviews } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { GUIDE_GRADES, formatPounds } from "@/lib/guides-meta";
+import { listPendingSupportQuestions } from "@/lib/queries/member";
 import {
+  answerSupportQuestion,
   createComplimentaryReview,
   deliverOrder,
   markOrderInProgress,
@@ -20,7 +22,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export const metadata = { title: "Guides admin — Symposed" };
+export const metadata = { title: "Guides admin | Symposed" };
 
 function workingDaysSince(from: Date, to = new Date()): number {
   let days = 0;
@@ -41,7 +43,7 @@ export default async function AdminGuidesPage({
   await requireAdmin();
   const { error, delivered } = await searchParams;
 
-  const [orders, [config], pendingReviews, decidedReviews, [salesAgg]] =
+  const [orders, [config], pendingReviews, decidedReviews, [salesAgg], supportQs] =
     await Promise.all([
       db
         .select()
@@ -67,6 +69,7 @@ export default async function AdminGuidesPage({
           avgDeliveryDays: sql<number | null>`avg(extract(epoch from (${guideOrders.deliveredAt} - ${guideOrders.paidAt})) / 86400.0) filter (where ${guideOrders.deliveredAt} is not null)`,
         })
         .from(guideOrders),
+      listPendingSupportQuestions(),
     ]);
 
   const active = orders.filter(
@@ -88,7 +91,7 @@ export default async function AdminGuidesPage({
       )}
       {delivered && (
         <div className="mt-4 rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm">
-          Delivered — the buyer has their download and review emails.
+          Delivered, the buyer has their download and review emails.
         </div>
       )}
 
@@ -101,7 +104,7 @@ export default async function AdminGuidesPage({
             "Avg days to delivery",
             salesAgg.avgDeliveryDays != null
               ? Number(salesAgg.avgDeliveryDays).toFixed(1)
-              : "—",
+              : "n/a",
           ],
         ].map(([label, value]) => (
           <Card key={label}>
@@ -125,7 +128,7 @@ export default async function AdminGuidesPage({
         <div className="mt-3 flex flex-col gap-4">
           {active.map((o) => {
             const days = o.paidAt ? workingDaysSince(o.paidAt) : 0;
-            const overdue = days >= 4;
+            const overdue = days > 5;
             const proforma = JSON.parse(o.proforma) as Record<string, unknown>;
             return (
               <Card
@@ -145,9 +148,9 @@ export default async function AdminGuidesPage({
                           : "bg-secondary text-secondary-foreground"
                       }
                     >
-                      day {days} of 5
+                      day {days} of 7
                     </Badge>
-                    {o.discountApplied && <Badge variant="outline">intro price</Badge>}
+                    {o.discountApplied && <Badge variant="outline">discounted</Badge>}
                     {o.countryMismatch && (
                       <Badge className="border-transparent bg-destructive/10 text-destructive">
                         country mismatch
@@ -159,7 +162,7 @@ export default async function AdminGuidesPage({
                   <details>
                     <summary className="cursor-pointer text-xs text-muted-foreground">
                       Proforma ({String(proforma.publicationType ?? "?")} ·{" "}
-                      {String(proforma.timeline ?? "?")}) — expand
+                      {String(proforma.timeline ?? "?")}), expand
                     </summary>
                     <pre className="mt-2 max-h-64 overflow-auto rounded bg-muted p-3 text-xs whitespace-pre-wrap">
                       {JSON.stringify(proforma, null, 2)}
@@ -227,15 +230,82 @@ export default async function AdminGuidesPage({
         </div>
       )}
 
+      {/* Support questions (§8.8) */}
+      <h2 className="mt-10 text-lg font-semibold tracking-tight">
+        Support questions {supportQs.length > 0 && `(${supportQs.length} waiting)`}
+      </h2>
+      {supportQs.length === 0 ? (
+        <p className="mt-3 rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground">
+          No support questions waiting.
+        </p>
+      ) : (
+        <div className="mt-3 flex flex-col gap-3">
+          {supportQs.map((q) => (
+            <Card key={q.id}>
+              <CardContent className="text-sm">
+                <p className="text-xs text-muted-foreground">
+                  {q.createdAt.toLocaleString("en-GB")}
+                </p>
+                <p className="mt-1 whitespace-pre-wrap break-words">{q.question}</p>
+                <form action={answerSupportQuestion} className="mt-3 flex flex-col gap-2">
+                  <input type="hidden" name="id" value={q.id} />
+                  <Textarea name="answer" rows={3} required placeholder="Your answer" />
+                  <Button type="submit" size="sm" className="self-start">
+                    Send answer
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
       {/* Pricing config */}
       <h2 className="mt-10 text-lg font-semibold tracking-tight">Pricing</h2>
+      <p className="mt-1 text-xs text-muted-foreground">
+        A three-band ladder: the first free quantity of guides are free, the
+        next intro quantity are the intro tier price, then the standard price.
+        While payments are off, checkout is skipped and every request goes
+        straight to the queue at no charge.
+      </p>
       {config && (
         <form
           action={updateGuidePricing}
           className="mt-3 grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-2"
         >
           <div className="grid gap-1.5">
-            <Label htmlFor="standardPounds">Standard price (£)</Label>
+            <Label htmlFor="freeQuantity">Free quantity (band 1)</Label>
+            <Input
+              id="freeQuantity"
+              name="freeQuantity"
+              type="number"
+              min="0"
+              defaultValue={String(config.freeQuantity)}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="introPounds">Intro tier price (£, band 2)</Label>
+            <Input
+              id="introPounds"
+              name="introPounds"
+              type="number"
+              step="0.01"
+              min="0"
+              defaultValue={(config.introPricePence / 100).toString()}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="introQuantity">Intro tier quantity (band 2)</Label>
+            <Input
+              id="introQuantity"
+              name="introQuantity"
+              type="number"
+              min="0"
+              defaultValue={String(config.introQuantity)}
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="standardPounds">Standard price (£, band 3)</Label>
             <Input
               id="standardPounds"
               name="standardPounds"
@@ -243,27 +313,6 @@ export default async function AdminGuidesPage({
               step="0.01"
               min="1"
               defaultValue={(config.standardPricePence / 100).toString()}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="introPounds">Introductory price (£)</Label>
-            <Input
-              id="introPounds"
-              name="introPounds"
-              type="number"
-              step="0.01"
-              min="1"
-              defaultValue={(config.introPricePence / 100).toString()}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="introQuantity">Introductory quantity</Label>
-            <Input
-              id="introQuantity"
-              name="introQuantity"
-              type="number"
-              min="0"
-              defaultValue={String(config.introQuantity)}
             />
           </div>
           <div className="grid gap-1.5">
@@ -276,6 +325,21 @@ export default async function AdminGuidesPage({
               defaultValue={config.blockedCountries.join(", ")}
             />
           </div>
+          <label className="flex items-center gap-2.5 self-end text-sm sm:col-span-2">
+            <input
+              type="checkbox"
+              name="paymentsEnabled"
+              defaultChecked={config.paymentsEnabled}
+              className="h-4 w-4 rounded border-input accent-primary"
+            />
+            <span>
+              <span className="font-medium">Payments enabled.</span>{" "}
+              <span className="text-muted-foreground">
+                When off, the Stripe checkout is skipped and requests are queued
+                free of charge, whatever the ladder says.
+              </span>
+            </span>
+          </label>
           <Button type="submit" size="sm" className="self-start">
             Save pricing
           </Button>
@@ -287,7 +351,7 @@ export default async function AdminGuidesPage({
         Review moderation {pendingReviews.length > 0 && `(${pendingReviews.length} pending)`}
       </h2>
       <p className="mt-1 text-xs text-muted-foreground">
-        Approval is a spam filter, not an editorial one — never edit a
+        Approval is a spam filter, not an editorial one, never edit a
         review&apos;s substance. Complimentary reviews must carry the badge.
       </p>
       {pendingReviews.length === 0 ? (
@@ -300,7 +364,7 @@ export default async function AdminGuidesPage({
             <Card key={r.id}>
               <CardContent className="text-sm">
                 <p className="text-xs text-muted-foreground">
-                  {r.rating}/5 · {r.reviewerName} — {r.reviewerRole}
+                  {r.rating}/5 · {r.reviewerName}, {r.reviewerRole}
                   {r.reviewerInstitution ? `, ${r.reviewerInstitution}` : ""}
                   {r.orderId ? " · from a paid order" : " · admin-created"}
                   {r.complimentaryGuide && " · complimentary"}

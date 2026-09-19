@@ -101,7 +101,7 @@ export default async function ProjectDetailPage({
       )}
       {reported && (
         <div className="mt-4 rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
-          Thanks — your report has been received and will be reviewed.
+          Thanks, your report has been received and will be reviewed.
         </div>
       )}
       {published && isOwner && (

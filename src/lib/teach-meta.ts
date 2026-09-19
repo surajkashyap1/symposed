@@ -55,17 +55,17 @@ export const TEACHING_RUBRIC = [
   {
     criterion: "Clinical accuracy and safety",
     standard:
-      "Content is correct, current, and safe. Sources or guidelines are named where it matters. This is pass/fail — everything else is negotiable, this is not.",
+      "Content is correct, current, and safe. Sources or guidelines are named where it matters. This is pass/fail, everything else is negotiable, this is not.",
   },
   {
     criterion: "Clear learning objectives",
     standard:
-      "3–5 objectives a learner could be assessed against, matched to the stated audience.",
+      "3 to 5 objectives a learner could be assessed against, matched to the stated audience.",
   },
   {
     criterion: "Structure and pacing",
     standard:
-      "A session plan that fits the format — one idea per session, realistic timings, active elements rather than an hour of slides.",
+      "A session plan that fits the format, one idea per session, realistic timings, active elements rather than an hour of slides.",
   },
   {
     criterion: "Audience fit",

@@ -152,7 +152,7 @@ export default async function OnboardingPage({
                 defaultValue={profile.contactPhone ?? ""}
               />
               <p className="text-xs text-muted-foreground">
-                Private. Never shown on your profile — only shared with the other
+                Private. Never shown on your profile, only shared with the other
                 person once an application is accepted. Your account email is
                 always used as your contact; a phone number is optional.
               </p>

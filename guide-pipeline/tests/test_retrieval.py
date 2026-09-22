@@ -1,7 +1,7 @@
 import httpx
 
 from guide_pipeline.http import CachedHttpClient
-from guide_pipeline.retrieval import dedupe, retrieve, tag_papers
+from guide_pipeline.retrieval import _normalize_use, dedupe, retrieve, tag_papers
 from guide_pipeline.sources.pubmed import Paper, PubMedClient
 
 SAMPLE_XML = """<?xml version="1.0"?>
@@ -105,16 +105,27 @@ def test_dedupe_by_doi_pmid_and_title():
     assert [p.pmid for p in out] == ["1", "5"]
 
 
+def test_normalize_use_maps_to_vocabulary():
+    assert _normalize_use("primary evidence") == "Primary evidence"  # case-insensitive
+    assert _normalize_use("Background / context") == "Background / context"
+    assert _normalize_use("some freeform label") == "Other"  # unknown -> Other
+    assert _normalize_use("") == ""  # empty stays empty (untagged fallback)
+
+
 def test_tag_papers_maps_and_falls_back(tmp_path):
     papers = [
         Paper("111", "T1", "abs1", (), "J", 2021, None),
         Paper("222", "T2", "abs2", (), "J", 2019, None),
     ]
     llm = FakeLLM(
-        {"tags": [{"pmid": "111", "suggested_use": "primary RCT", "reason": "trial"}]}
+        {
+            "tags": [
+                {"pmid": "111", "suggested_use": "Primary evidence", "reason": "trial"}
+            ]
+        }
     )
     tagged = tag_papers(llm, papers)
-    assert tagged[0].suggested_use == "primary RCT" and tagged[0].reason == "trial"
+    assert tagged[0].suggested_use == "Primary evidence" and tagged[0].reason == "trial"
     assert tagged[1].suggested_use == "(untagged)"  # not returned by the model
 
 
@@ -123,8 +134,8 @@ def test_retrieve_end_to_end(tmp_path):
     llm = FakeLLM(
         {
             "tags": [
-                {"pmid": "111", "suggested_use": "primary", "reason": "r"},
-                {"pmid": "222", "suggested_use": "background", "reason": ""},
+                {"pmid": "111", "suggested_use": "Primary evidence", "reason": "r"},
+                {"pmid": "222", "suggested_use": "Background / context", "reason": ""},
             ]
         }
     )
@@ -132,5 +143,5 @@ def test_retrieve_end_to_end(tmp_path):
     assert len(result.papers) == 2
     d = result.as_dict()
     assert d["count"] == 2
-    assert d["papers"][0]["suggested_use"] == "primary"
+    assert d["papers"][0]["suggested_use"] == "Primary evidence"
     assert d["papers"][0]["doi"] == "10.1/own"

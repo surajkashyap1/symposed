@@ -25,8 +25,9 @@ scheduler yet — those come back later, one at a time.
 - **Step 4 — Deep retrieval**: chosen title only — full records + abstracts,
   dedupe (DOI → PMID → title+year), tag each paper with a suggested use. ✅
   (`python -m guide_pipeline retrieve "<pubmed query>"`)
-- **Step 5 — The guide**: draft the Word doc from retrieved records only (§6 of
-  the pipeline spec), including the date the searches were run.
+- **Step 5 — The guide**: draft the Word doc from retrieved records only,
+  including the date the searches were run. ✅
+  (`python -m guide_pipeline guide "<title>" -- "<pubmed query>"`)
 
 Models (spec): Claude Sonnet 5 for titles + drafting, Claude Haiku 4.5 for
 tagging. We are trialling **Groq's free model first** and will switch to Claude if
@@ -61,6 +62,8 @@ python -m guide_pipeline candidates "vitamin d deficiency in critically ill adul
                                                            # LLM candidate titles, count-gated and ranked
 python -m guide_pipeline retrieve "vitamin D[tiab] AND critically ill[tiab] AND randomized[tiab]"  # Step 4:
                                                            # full records + abstracts, deduped, use-tagged
+python -m guide_pipeline guide "Vitamin D in the critically ill" -- "vitamin D[tiab] AND critically ill[tiab]"
+                                                           # Step 5: writes output/<request>/guide.docx + results.json
 ```
 
 ## Test

@@ -21,12 +21,35 @@ _TAG_BATCH = 10  # papers per LLM tagging call
 _ABSTRACT_CHARS = 600  # abstract chars sent to the model per paper
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
+# A small controlled vocabulary so the guide groups cleanly (in this order),
+# instead of fragmenting into many one-off free-form labels.
+USE_CATEGORIES = (
+    "Primary evidence",
+    "Systematic review or meta-analysis",
+    "Background / context",
+    "Methods reference",
+    "Related but different population",
+    "Protocol or ongoing study",
+    "Other",
+)
+
 _TAG_SYSTEM = (
     "You help a clinician triage papers for a review. You return ONLY valid JSON. "
-    "For each paper you SUGGEST how it might be used (e.g. 'primary RCT evidence', "
-    "'background/context', 'methods reference', 'related but different population'). "
-    "You do NOT decide inclusion or exclusion — the user decides that."
+    "For each paper you SUGGEST how it might be used by choosing exactly one "
+    "category from the list you are given. You do NOT decide inclusion or "
+    "exclusion — the user decides that."
 )
+
+
+def _normalize_use(raw: str) -> str:
+    """Map a model-supplied use to the controlled vocabulary ('' stays '')."""
+    r = raw.strip()
+    if not r:
+        return ""
+    for category in USE_CATEGORIES:
+        if r.lower() == category.lower():
+            return category
+    return "Other"
 
 
 @dataclass(frozen=True)
@@ -100,7 +123,8 @@ def tag_papers(llm: LLMClient, papers: list[Paper]) -> list[TaggedPaper]:
             for p in batch
         )
         user = (
-            "Suggest a use for each paper below. Return JSON "
+            "Suggest a use for each paper below. For suggested_use choose EXACTLY one "
+            f"of: {', '.join(USE_CATEGORIES)}. Return JSON "
             '{"tags":[{"pmid":str,"suggested_use":str,"reason":str}]} using EXACTLY '
             f"the pmids given.\n\n{listing}"
         )
@@ -110,7 +134,7 @@ def tag_papers(llm: LLMClient, papers: list[Paper]) -> list[TaggedPaper]:
                 pmid = str(tag.get("pmid", "")).strip()
                 if pmid:
                     suggestions[pmid] = (
-                        str(tag.get("suggested_use", "")).strip(),
+                        _normalize_use(str(tag.get("suggested_use", ""))),
                         str(tag.get("reason", "")).strip(),
                     )
         except LLMError:

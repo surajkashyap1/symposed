@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import sys
 
+from datetime import datetime, timezone
+
 from .candidates import screen_candidates
+from .guide import build_guide
 from .landscape import assess_landscape
 from .llm import LLMError, build_llm
 from .retrieval import retrieve
 from .settings import Settings
 from .sources import build_sources
+from .workspace import create_workspace
 
 
 def doctor() -> int:
@@ -146,6 +150,38 @@ def retrieve_cmd(query: str) -> int:
     return 0
 
 
+def guide_cmd(title: str, query: str) -> int:
+    """Step 5: retrieve for `query`, then write the guide.docx + results.json."""
+    settings = Settings.load()
+    if settings.llm_provider == "groq" and not settings.groq_api_key:
+        print("Set GROQ_API_KEY in .env first (LLM_PROVIDER=groq).")
+        return 2
+    sources = build_sources(settings)
+    llm = build_llm(settings)
+    print(f'Building guide: "{title}"\n  query: {query}\n')
+    try:
+        result = retrieve(
+            sources.pubmed,
+            llm,
+            query,
+            max_records=settings.thresholds.max_records_to_screen,
+        )
+    except (LLMError, NotImplementedError) as exc:
+        print(f"  LLM error: {exc}")
+        return 1
+
+    search_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    workspace = create_workspace(title, base=settings.output_dir)
+    workspace.write_results(
+        {"title": title, "search_date": search_date, **result.as_dict()}
+    )
+    path = build_guide(workspace, title, result, search_date=search_date)
+    print(f"  {len(result.papers)} papers retrieved.")
+    print(f"  Wrote {path}")
+    print(f"  Wrote {workspace.results_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "counts":
@@ -168,6 +204,21 @@ def main(argv: list[str] | None = None) -> int:
             print('Usage: python -m guide_pipeline retrieve "<pubmed query>"')
             return 2
         return retrieve_cmd(" ".join(argv[1:]))
+    if argv and argv[0] == "guide":
+        rest = argv[1:]
+        if not rest:
+            print('Usage: python -m guide_pipeline guide "<title>" -- "<pubmed query>"')
+            return 2
+        if "--" in rest:
+            sep = rest.index("--")
+            title = " ".join(rest[:sep])
+            query = " ".join(rest[sep + 1 :])
+        else:  # no separator: use the text as both title and query
+            title = query = " ".join(rest)
+        if not query:
+            print('Usage: python -m guide_pipeline guide "<title>" -- "<pubmed query>"')
+            return 2
+        return guide_cmd(title, query)
     return doctor()
 
 

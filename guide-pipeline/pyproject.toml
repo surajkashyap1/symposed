@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "guide-pipeline"
+version = "0.1.0"
+description = "Symposed guide pipeline — auto-drafts a Publication Guide from a proforma (v1: PubMed, Europe PMC, ClinicalTrials.gov)."
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.27",
+  "python-dotenv>=1.0",
+  "python-docx>=1.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+guide-pipeline = "guide_pipeline.__main__:doctor"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

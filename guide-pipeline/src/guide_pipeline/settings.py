@@ -61,7 +61,10 @@ class Settings:
     # llm — Groq first, switchable to Anthropic with no code change
     llm_provider: str = "groq"
     groq_api_key: Optional[str] = None
+    groq_model: str = "openai/gpt-oss-120b"
     anthropic_api_key: Optional[str] = None
+    anthropic_model: str = "claude-sonnet-4-6"
+    llm_temperature: float = 0.4
     # step 2 landscape: how many recent years of the publication trend to fetch
     landscape_years: int = 10
     # paths
@@ -76,7 +79,10 @@ class Settings:
             ncbi_email=_get("NCBI_EMAIL"),
             llm_provider=(_get("LLM_PROVIDER", "groq") or "groq").lower(),
             groq_api_key=_get("GROQ_API_KEY"),
+            groq_model=_get("GROQ_MODEL", "openai/gpt-oss-120b") or "openai/gpt-oss-120b",
             anthropic_api_key=_get("ANTHROPIC_API_KEY"),
+            anthropic_model=_get("ANTHROPIC_MODEL", "claude-sonnet-4-6") or "claude-sonnet-4-6",
+            llm_temperature=float(_get("LLM_TEMPERATURE", "0.4") or "0.4"),
             landscape_years=_get_int("LANDSCAPE_YEARS", 10),
             output_dir=Path(_get("OUTPUT_DIR", "output") or "output"),
             thresholds=Thresholds.from_env(),

@@ -19,8 +19,9 @@ scheduler yet — those come back later, one at a time.
 - **Step 2 — Concept mapping & landscape**: proforma topic → real MeSH terms via
   E-utilities; four counts (total literature, publication years, existing
   systematic reviews, existing guidelines). ✅ (`python -m guide_pipeline landscape "<topic>"`)
-- **Step 3 — Candidates & gates**: LLM makes 8–12 candidate titles across the 14
-  axes (§4 of the pipeline spec); count-only queries; apply gates; rank survivors.
+- **Step 3 — Candidates & gates**: LLM makes 8–12 candidate titles across distinct
+  axes; count-only queries; apply gates; rank survivors. ✅
+  (`python -m guide_pipeline candidates "<topic>"`)
 - **Step 4 — Deep retrieval**: chosen title only — full records + abstracts,
   dedupe (DOI → PMID → title+year), tag each paper with a suggested use.
 - **Step 5 — The guide**: draft the Word doc from retrieved records only (§6 of
@@ -55,6 +56,8 @@ python -m guide_pipeline counts "vitamin d AND sepsis"   # Step 1 live smoke: pr
                                                          # source's count to compare to the website
 python -m guide_pipeline landscape "vitamin d deficiency"  # Step 2: MeSH terms + the four
                                                            # landscape counts (total/by-year/SRs/guidelines)
+python -m guide_pipeline candidates "vitamin d deficiency in critically ill adults"  # Step 3:
+                                                           # LLM candidate titles, count-gated and ranked
 ```
 
 ## Test

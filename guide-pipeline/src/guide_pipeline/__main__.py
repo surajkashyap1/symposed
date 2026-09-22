@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import sys
 
+from .candidates import screen_candidates
 from .landscape import assess_landscape
+from .llm import LLMError, build_llm
 from .settings import Settings
 from .sources import build_sources
 
@@ -76,6 +78,44 @@ def landscape(topic: str) -> int:
     return 0
 
 
+def candidates(topic: str) -> int:
+    """Step 3 live check: generate candidate titles, count + gate each, rank survivors."""
+    settings = Settings.load()
+    if settings.llm_provider == "groq" and not settings.groq_api_key:
+        print("Set GROQ_API_KEY in .env first (LLM_PROVIDER=groq).")
+        return 2
+    sources = build_sources(settings)
+    llm = build_llm(settings)
+    print(f'Candidates for: "{topic}"  [{settings.llm_provider}:{settings.groq_model}]\n')
+    try:
+        result = screen_candidates(
+            llm, sources.pubmed, sources.clinicaltrials, topic, settings.thresholds
+        )
+    except (LLMError, NotImplementedError) as exc:
+        print(f"  LLM error: {exc}")
+        return 1
+
+    for a in result.assessments:
+        tag = "PASS  " if a.gate.passed else "REJECT"
+        trials = "?" if a.active_trials is None else f"{a.active_trials:,}"
+        print(f"  [{tag}] {a.candidate.title}")
+        print(
+            f"          axis={a.candidate.axis or '-'} · eligible={a.eligible_studies:,}"
+            f" · recent SRs={a.recent_reviews:,} · active trials={trials}"
+        )
+        if a.gate.reasons:
+            print(f"          rejected: {'; '.join(a.gate.reasons)}")
+    print()
+    if result.top is not None:
+        print(f"  Top pick: {result.top.candidate.title}")
+        print(f"            ({result.top.eligible_studies:,} eligible studies)")
+        for note in result.top.manual_checks:
+            print(f"            manual: {note}")
+    else:
+        print("  No candidate passed the gates — try a broader or different topic.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "counts":
@@ -88,6 +128,11 @@ def main(argv: list[str] | None = None) -> int:
             print('Usage: python -m guide_pipeline landscape "<topic>"')
             return 2
         return landscape(" ".join(argv[1:]))
+    if argv and argv[0] == "candidates":
+        if len(argv) < 2:
+            print('Usage: python -m guide_pipeline candidates "<topic>"')
+            return 2
+        return candidates(" ".join(argv[1:]))
     return doctor()
 
 

@@ -7,6 +7,7 @@ import sys
 from .candidates import screen_candidates
 from .landscape import assess_landscape
 from .llm import LLMError, build_llm
+from .retrieval import retrieve
 from .settings import Settings
 from .sources import build_sources
 
@@ -116,6 +117,35 @@ def candidates(topic: str) -> int:
     return 0
 
 
+def retrieve_cmd(query: str) -> int:
+    """Step 4 live check: fetch full records for a chosen query, dedupe, tag."""
+    settings = Settings.load()
+    if settings.llm_provider == "groq" and not settings.groq_api_key:
+        print("Set GROQ_API_KEY in .env first (LLM_PROVIDER=groq).")
+        return 2
+    sources = build_sources(settings)
+    llm = build_llm(settings)
+    print(f'Retrieving for: "{query}"\n')
+    try:
+        result = retrieve(
+            sources.pubmed,
+            llm,
+            query,
+            max_records=settings.thresholds.max_records_to_screen,
+        )
+    except (LLMError, NotImplementedError) as exc:
+        print(f"  LLM error: {exc}")
+        return 1
+
+    for t in result.papers:
+        p = t.paper
+        year = p.year or "----"
+        print(f"  [{year}] PMID {p.pmid} — {p.title}")
+        print(f"          use: {t.suggested_use}" + (f" — {t.reason}" if t.reason else ""))
+    print(f"\n  {len(result.papers)} papers retrieved and tagged (deduped).")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "counts":
@@ -133,6 +163,11 @@ def main(argv: list[str] | None = None) -> int:
             print('Usage: python -m guide_pipeline candidates "<topic>"')
             return 2
         return candidates(" ".join(argv[1:]))
+    if argv and argv[0] == "retrieve":
+        if len(argv) < 2:
+            print('Usage: python -m guide_pipeline retrieve "<pubmed query>"')
+            return 2
+        return retrieve_cmd(" ".join(argv[1:]))
     return doctor()
 
 

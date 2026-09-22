@@ -10,6 +10,8 @@ as a request param; it is kept out of the cache key by the HTTP layer.
 
 from __future__ import annotations
 
+import re
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Optional
 
@@ -17,6 +19,11 @@ from ..http import CachedHttpClient, CachedResponse
 
 ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 ESUMMARY_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
+EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+
+# EFetch is fetched by GET with a comma-joined id list; keep chunks small enough
+# for the URL and polite to NCBI.
+_FETCH_CHUNK = 150
 
 
 @dataclass(frozen=True)
@@ -25,6 +32,19 @@ class MeshTerm:
 
     name: str
     ui: str
+
+
+@dataclass(frozen=True)
+class Paper:
+    """A retrieved PubMed record. Every field is read from the API response."""
+
+    pmid: str
+    title: str
+    abstract: str
+    authors: tuple[str, ...]
+    journal: str
+    year: Optional[int]
+    doi: Optional[str]
 
 
 def _has_count(resp: CachedResponse) -> bool:
@@ -39,6 +59,71 @@ def _has_result(resp: CachedResponse) -> bool:
         return "result" in resp.json()
     except ValueError:
         return False
+
+
+def _is_pubmed_xml(resp: CachedResponse) -> bool:
+    try:
+        return ET.fromstring(resp.text).tag == "PubmedArticleSet"
+    except ET.ParseError:
+        return False
+
+
+def _node_text(node: Optional[ET.Element]) -> str:
+    """All text inside a node, including nested markup (e.g. italics in titles)."""
+    return "".join(node.itertext()).strip() if node is not None else ""
+
+
+def _parse_article(art: ET.Element) -> Optional[Paper]:
+    citation = art.find("./MedlineCitation")
+    article = citation.find("./Article") if citation is not None else None
+    if citation is None or article is None:
+        return None
+    pmid = (citation.findtext("./PMID") or "").strip()
+    title = _node_text(article.find("./ArticleTitle"))
+
+    parts: list[str] = []
+    for ab in article.findall("./Abstract/AbstractText"):
+        label = ab.get("Label")
+        text = _node_text(ab)
+        if text:
+            parts.append(f"{label}: {text}" if label else text)
+    abstract = " ".join(parts)
+
+    journal = article.findtext("./Journal/Title") or ""
+    year: Optional[int] = None
+    pubdate = article.find("./Journal/JournalIssue/PubDate")
+    if pubdate is not None:
+        y = pubdate.findtext("./Year")
+        if y and y.strip().isdigit():
+            year = int(y.strip())
+        else:
+            match = re.search(r"\d{4}", pubdate.findtext("./MedlineDate") or "")
+            if match:
+                year = int(match.group())
+
+    authors: list[str] = []
+    for a in article.findall("./AuthorList/Author"):
+        last = a.findtext("./LastName")
+        if last:
+            initials = a.findtext("./Initials") or ""
+            authors.append(f"{last} {initials}".strip())
+
+    doi: Optional[str] = None
+    # The article's OWN ids only — NOT ids in the reference list.
+    for aid in art.findall("./PubmedData/ArticleIdList/ArticleId"):
+        if aid.get("IdType") == "doi":
+            doi = (aid.text or "").strip() or None
+            break
+
+    return Paper(
+        pmid=pmid,
+        title=title,
+        abstract=abstract,
+        authors=tuple(authors),
+        journal=journal,
+        year=year,
+        doi=doi,
+    )
 
 
 @dataclass(frozen=True)
@@ -73,6 +158,37 @@ class PubMedClient:
                 params["maxdate"] = str(max_year)
         data = self.http.get_json(ESEARCH_URL, params, validate=_has_count)
         return int(data["esearchresult"]["count"])
+
+    def search_pmids(self, query: str, *, retmax: int = 400) -> list[str]:
+        """PMIDs matching `query`, most recent first, up to `retmax`."""
+        params = {
+            **self._base_params(),
+            "term": query,
+            "retmax": str(retmax),
+            "sort": "most+recent",
+        }
+        data = self.http.get_json(ESEARCH_URL, params, validate=_has_count)
+        return list(data["esearchresult"].get("idlist", []))
+
+    def fetch_details(self, pmids: list[str]) -> list[Paper]:
+        """Full records (incl. abstracts) for `pmids`, fetched via EFetch XML."""
+        papers: list[Paper] = []
+        for start in range(0, len(pmids), _FETCH_CHUNK):
+            chunk = pmids[start : start + _FETCH_CHUNK]
+            params = {
+                **self._base_params(),
+                "id": ",".join(chunk),
+                "rettype": "abstract",
+                "retmode": "xml",
+            }
+            # EFetch is XML, not JSON — use the raw response and parse it.
+            resp = self.http.get(EFETCH_URL, params, validate=_is_pubmed_xml)
+            root = ET.fromstring(resp.text)
+            for art in root.findall("./PubmedArticle"):
+                paper = _parse_article(art)
+                if paper is not None:
+                    papers.append(paper)
+        return papers
 
     def mesh_terms(self, topic: str, *, max_terms: int = 5) -> list[MeshTerm]:
         """Real MeSH descriptors matching `topic`, via the MeSH database.

@@ -13,11 +13,12 @@ from ..http import CachedHttpClient
 from ..settings import Settings
 from .clinicaltrials import ClinicalTrialsClient
 from .europepmc import EuropePmcClient
-from .pubmed import MeshTerm, PubMedClient
+from .pubmed import MeshTerm, Paper, PubMedClient
 
 __all__ = [
     "PubMedClient",
     "MeshTerm",
+    "Paper",
     "EuropePmcClient",
     "ClinicalTrialsClient",
     "Sources",

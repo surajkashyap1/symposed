@@ -23,7 +23,8 @@ scheduler yet — those come back later, one at a time.
   axes; count-only queries; apply gates; rank survivors. ✅
   (`python -m guide_pipeline candidates "<topic>"`)
 - **Step 4 — Deep retrieval**: chosen title only — full records + abstracts,
-  dedupe (DOI → PMID → title+year), tag each paper with a suggested use.
+  dedupe (DOI → PMID → title+year), tag each paper with a suggested use. ✅
+  (`python -m guide_pipeline retrieve "<pubmed query>"`)
 - **Step 5 — The guide**: draft the Word doc from retrieved records only (§6 of
   the pipeline spec), including the date the searches were run.
 
@@ -58,6 +59,8 @@ python -m guide_pipeline landscape "vitamin d deficiency"  # Step 2: MeSH terms 
                                                            # landscape counts (total/by-year/SRs/guidelines)
 python -m guide_pipeline candidates "vitamin d deficiency in critically ill adults"  # Step 3:
                                                            # LLM candidate titles, count-gated and ranked
+python -m guide_pipeline retrieve "vitamin D[tiab] AND critically ill[tiab] AND randomized[tiab]"  # Step 4:
+                                                           # full records + abstracts, deduped, use-tagged
 ```
 
 ## Test

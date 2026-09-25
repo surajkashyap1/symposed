@@ -1,3 +1,5 @@
+from datetime import date
+
 import httpx
 import pytest
 
@@ -5,7 +7,7 @@ from guide_pipeline.candidates import (
     AXES,
     HIGH_YIELD_AXES,
     Candidate,
-    apply_gates,
+    CandidateAssessment,
     assess_candidate,
     generate_candidates,
     plain_terms,
@@ -14,6 +16,7 @@ from guide_pipeline.candidates import (
 )
 from guide_pipeline.http import CachedHttpClient
 from guide_pipeline.llm import LLMError
+from guide_pipeline.prospero import ProsperoMirror, ProsperoRecord, StaleMirrorError
 from guide_pipeline.settings import Thresholds
 from guide_pipeline.sources.clinicaltrials import ClinicalTrialsClient
 from guide_pipeline.sources.pubmed import PubMedClient
@@ -168,30 +171,11 @@ def test_generate_candidates_trials_query_fallback():
     assert out[1].trials_query == "given plainly"  # used as given
 
 
-# -- gates -------------------------------------------------------------------
+# -- triage + gates (with mocked APIs and a real temp mirror) ---------------
 TH = Thresholds(min_eligible_studies=8, max_records_to_screen=400, recent_review_years=4)
+TODAY = date(2026, 9, 25)
 
 
-def test_gate_rejects_too_few():
-    r = apply_gates(3, 0, TH)
-    assert not r.passed and "only 3 eligible" in r.reasons[0]
-
-
-def test_gate_rejects_too_many():
-    r = apply_gates(5000, 0, TH)
-    assert not r.passed and "to screen" in r.reasons[0]
-
-
-def test_gate_rejects_recent_review():
-    r = apply_gates(50, 2, TH)
-    assert not r.passed and "systematic review" in r.reasons[0]
-
-
-def test_gate_passes_in_band():
-    assert apply_gates(50, 0, TH).passed
-
-
-# -- assessment (with mocked APIs) -------------------------------------------
 def make_sources(handler, tmp_path):
     def http():
         return CachedHttpClient(
@@ -203,93 +187,148 @@ def make_sources(handler, tmp_path):
     return PubMedClient(http=http()), ClinicalTrialsClient(http=http())
 
 
-def routed_handler(eligible, recent, active):
+def make_mirror(tmp_path, titles=()):
+    m = ProsperoMirror(tmp_path / "prospero.sqlite")
+    m.merge([ProsperoRecord(f"CRD{i}", t, date(2025, 1, 1)) for i, t in enumerate(titles)])
+    m.log_refresh("automated", covered_to=TODAY, added=len(titles), updated=0)
+    return m
+
+
+def routed_handler(records=200, eligible=50, recent=0, soon=0, protocols=()):
+    """PubMed/CT.gov stand-in routing on which filter the query carries."""
+
     def handler(request):
+        params = dict(request.url.params)
         if "clinicaltrials" in request.url.host:
-            params = dict(request.url.params)
-            n = active if "filter.overallStatus" in params else 999
-            return httpx.Response(200, json={"totalCount": n})
-        term = dict(request.url.params).get("term", "")
-        count = recent if "systematic[sb]" in term else eligible
-        return httpx.Response(200, json={"esearchresult": {"count": str(count)}})
+            return httpx.Response(200, json={"totalCount": soon})
+        if request.url.path.endswith("/esummary.fcgi"):
+            ids = params["id"].split(",")
+            res = {"uids": ids, **{i: {"title": t} for i, (_, t) in zip(ids, protocols)}}
+            return httpx.Response(200, json={"result": res})
+        term = params.get("term", "")
+        if "protocol[ti]" in term:
+            n = len(protocols)
+            ids = [pmid for pmid, _ in protocols]
+            return httpx.Response(200, json={"esearchresult": {"count": str(n), "idlist": ids}})
+        if "NOT (review[pt]" in term:
+            n = eligible
+        elif "AND systematic[sb]" in term:
+            n = recent
+        else:
+            n = records
+        return httpx.Response(200, json={"esearchresult": {"count": str(n)}})
 
     return handler
 
 
-def test_assess_candidate_passes_and_flags_prospero(tmp_path):
-    pubmed, ct = make_sources(routed_handler(eligible=50, recent=0, active=2), tmp_path)
-    cand = Candidate("Title", "population", "sepsis fluids")
-    a = assess_candidate(pubmed, ct, cand, TH, current_year=2026)
-    assert a.gate.passed
-    assert a.eligible_studies == 50 and a.recent_reviews == 0 and a.active_trials == 2
-    assert any("PROSPERO" in m for m in a.manual_checks)
-    assert any("still running" in m for m in a.manual_checks)  # active>0 note
+def assess(tmp_path, handler, cand=None, mirror_titles=(), **kw):
+    pubmed, ct = make_sources(handler, tmp_path)
+    return assess_candidate(
+        pubmed, ct, make_mirror(tmp_path, mirror_titles),
+        cand or Candidate("Vitamin D and mortality in sepsis", "Unpooled outcome", "q"),
+        TH, today=TODAY, **kw,
+    )
 
 
-def test_assess_candidate_rejected_by_recent_review(tmp_path):
-    pubmed, ct = make_sources(routed_handler(eligible=50, recent=1, active=0), tmp_path)
-    a = assess_candidate(pubmed, ct, Candidate("T", "x", "q"), TH, current_year=2026)
-    assert not a.gate.passed
-    assert a.active_trials == 0
-    assert not any("still running" in m for m in a.manual_checks)
+def test_assess_runs_three_counts_from_one_concept_query(tmp_path):
+    a = assess(tmp_path, routed_handler(records=300, eligible=40, recent=0, soon=0))
+    assert (a.counts.records_to_screen, a.counts.eligible_studies, a.counts.recent_reviews) == (
+        300, 40, 0
+    )
+    assert a.verdict.outcome == "pass"
+    queries = [r.query for r in a.searches]
+    assert queries[0] == "q"
+    assert queries[1].startswith("(q) NOT (review[pt]")
+    assert queries[2].startswith("(q) AND systematic[sb]") and "pub year >= 2023" in queries[2]
+    assert any("protocol[ti]" in q for q in queries)
+    assert any(r.source == "ClinicalTrials.gov" and "completing by 2027-09-2" in r.query
+               for r in a.searches)
+    assert a.prospero.checked_on == TODAY and a.prospero.verdict == "clear"
 
 
-def test_assess_candidate_trial_failure_is_nonfatal(tmp_path):
-    # ClinicalTrials.gov returns 400 (e.g. bad query) — must not abort the screen.
+def test_assess_rejects_on_registered_prospero_protocol(tmp_path):
+    a = assess(
+        tmp_path, routed_handler(),
+        mirror_titles=["Vitamin D and mortality in sepsis: a systematic review"],
+    )
+    assert a.verdict.outcome == "reject"
+    assert any("PROSPERO CRD0" in r for r in a.verdict.reasons)
+
+
+def test_assess_rejects_on_published_protocol(tmp_path):
+    handler = routed_handler(protocols=[("999", "Vitamin D and mortality in sepsis: a protocol")])
+    a = assess(tmp_path, handler)
+    assert a.counts.protocol_matches[0][0] == "999"
+    assert a.verdict.outcome == "reject"
+
+
+def test_assess_flags_trials_and_survives(tmp_path):
+    a = assess(tmp_path, routed_handler(soon=2))
+    assert a.verdict.outcome == "flag" and a.verdict.passed
+    assert a.counts.trials_reporting_soon == 2
+
+
+def test_assess_trial_failure_is_nonfatal(tmp_path):
+    base = routed_handler()
+
     def handler(request):
         if "clinicaltrials" in request.url.host:
             return httpx.Response(400, text="bad request")
-        term = dict(request.url.params).get("term", "")
-        count = 0 if "systematic[sb]" in term else 50
-        return httpx.Response(200, json={"esearchresult": {"count": str(count)}})
+        return base(request)
 
-    pubmed, ct = make_sources(handler, tmp_path)
-    a = assess_candidate(pubmed, ct, Candidate("T", "x", "q"), TH, current_year=2026)
-    assert a.gate.passed  # PubMed-based gates still decided
-    assert a.active_trials is None
-    assert any("Trial check failed" in m for m in a.manual_checks)
+    a = assess(tmp_path, handler)
+    assert a.counts.trials_reporting_soon is None and a.verdict.outcome == "flag"
+
+
+def test_assess_refuses_stale_mirror(tmp_path):
+    pubmed, ct = make_sources(routed_handler(), tmp_path)
+    m = ProsperoMirror(tmp_path / "stale.sqlite")
+    m.log_refresh("automated", covered_to=date(2026, 8, 1), added=0, updated=0)
+    with pytest.raises(StaleMirrorError):
+        assess_candidate(pubmed, ct, m, Candidate("T", "Discordance", "q"), TH, today=TODAY)
 
 
 # -- ranking + end-to-end ----------------------------------------------------
 def test_rank_survivors_orders_by_evidence(tmp_path):
-    def a(elig, passed):
-        from guide_pipeline.candidates import CandidateAssessment, GateResult
+    from guide_pipeline.gates import GateVerdict, TriageCounts
 
+    def a(elig, outcome):
         return CandidateAssessment(
             candidate=Candidate("t", "a", "q"),
-            eligible_studies=elig,
-            recent_reviews=0,
-            active_trials=0,
-            gate=GateResult(passed, [] if passed else ["x"]),
-            manual_checks=[],
+            counts=TriageCounts(100, elig, 0, 0),
+            verdict=GateVerdict(outcome, []),
+            prospero=None,
+            searches=[],
         )
 
-    ranked = rank_survivors([a(20, True), a(90, True), a(999, False), a(50, True)])
-    assert [x.eligible_studies for x in ranked] == [90, 50, 20]
+    ranked = rank_survivors([a(20, "pass"), a(90, "flag"), a(999, "reject"), a(50, "pass")])
+    assert [x.counts.eligible_studies for x in ranked] == [90, 50, 20]
+
+
+def screen(tmp_path, llm, handler, th=TH):
+    pubmed, ct = make_sources(handler, tmp_path)
+    return screen_candidates(llm, pubmed, ct, make_mirror(tmp_path), "sepsis", th, today=TODAY)
 
 
 def test_screen_candidates_end_to_end(tmp_path):
     llm = FakeLLM(six_axis_batch())
-    pubmed, ct = make_sources(routed_handler(eligible=50, recent=0, active=0), tmp_path)
-    result = screen_candidates(llm, pubmed, ct, "sepsis", TH, current_year=2026)
+    result = screen(tmp_path, llm, routed_handler())
     assert len(result.assessments) == 6
     assert result.batches == 1 and len(llm.calls) == 1  # a pass stops generation
-    assert result.top is not None and result.top.gate.passed
+    assert result.top is not None and result.top.verdict.passed
     assert all(a.batch == 1 for a in result.assessments)
 
 
-def eligible_by_title_handler(passing_query):
-    """Only candidates whose query is `passing_query` have a workable count."""
+def eligible_by_query_handler(passing_query):
+    """Only the candidate whose concept query is `passing_query` has enough studies."""
+    base = routed_handler()
 
     def handler(request):
-        if "clinicaltrials" in request.url.host:
-            return httpx.Response(200, json={"totalCount": 0})
         term = dict(request.url.params).get("term", "")
-        if "systematic[sb]" in term:
-            count = 0
-        else:
-            count = 50 if term == passing_query else 2
-        return httpx.Response(200, json={"esearchresult": {"count": str(count)}})
+        if "NOT (review[pt]" in term and "clinicaltrials" not in request.url.host:
+            n = 50 if term.startswith(f"({passing_query})") else 2
+            return httpx.Response(200, json={"esearchresult": {"count": str(n)}})
+        return base(request)
 
     return handler
 
@@ -299,8 +338,7 @@ def test_screen_generates_new_batch_when_all_fail(tmp_path):
     second = six_axis_batch("B")
     second["candidates"][2]["pubmed_query"] = "winner"
     llm = SeqLLM(first, second)
-    pubmed, ct = make_sources(eligible_by_title_handler("winner"), tmp_path)
-    result = screen_candidates(llm, pubmed, ct, "sepsis", TH, current_year=2026)
+    result = screen(tmp_path, llm, eligible_by_query_handler("winner"))
     assert result.batches == 2
     assert len(result.assessments) == 12  # every candidate in both batches evaluated
     assert result.top.candidate.title == "B2"
@@ -309,13 +347,27 @@ def test_screen_generates_new_batch_when_all_fail(tmp_path):
     assert "A0" in llm.calls[1][1] and "A5" in llm.calls[1][1]
 
 
+def test_screen_keeps_downgraded_candidates(tmp_path):
+    th = Thresholds(min_eligible_studies=8, scoping_min_studies=5, max_candidate_batches=1)
+    result = screen(tmp_path, FakeLLM(six_axis_batch()), routed_handler(eligible=6), th)
+    assert result.top is None and len(result.downgraded) == 6
+
+
 def test_screen_stops_after_max_batches(tmp_path):
     th = Thresholds(min_eligible_studies=8, max_candidate_batches=2)
     llm = SeqLLM(six_axis_batch("A"), six_axis_batch("B"), six_axis_batch("C"))
-    pubmed, ct = make_sources(eligible_by_title_handler("nothing"), tmp_path)
-    result = screen_candidates(llm, pubmed, ct, "sepsis", th, current_year=2026)
+    result = screen(tmp_path, llm, eligible_by_query_handler("nothing"), th)
     assert result.batches == 2 and len(llm.calls) == 2
     assert result.top is None and not result.survivors
+
+
+def test_screen_refuses_stale_mirror_before_any_call(tmp_path):
+    llm = FakeLLM(six_axis_batch())
+    pubmed, ct = make_sources(routed_handler(), tmp_path)
+    m = ProsperoMirror(tmp_path / "empty.sqlite")
+    with pytest.raises(StaleMirrorError):
+        screen_candidates(llm, pubmed, ct, m, "sepsis", TH, today=TODAY)
+    assert llm.calls == []
 
 
 def test_prompt_requires_axes_outside_high_yield():

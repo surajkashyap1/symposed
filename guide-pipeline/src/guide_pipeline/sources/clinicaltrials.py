@@ -7,6 +7,7 @@ The count comes straight from `totalCount` in the API response, requested with
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 from typing import Optional, Sequence
 
 from ..http import CachedHttpClient, CachedResponse
@@ -30,12 +31,18 @@ class ClinicalTrialsClient:
     http: CachedHttpClient
 
     def count(
-        self, query: str, *, statuses: Optional[Sequence[str]] = None
+        self,
+        query: str,
+        *,
+        statuses: Optional[Sequence[str]] = None,
+        completes_by: Optional[date] = None,
     ) -> int:
         """Number of ClinicalTrials.gov studies matching `query`.
 
         `statuses` restricts to given overall statuses (e.g. ACTIVE_STATUSES for
-        trials still running).
+        trials still running). `completes_by` keeps only studies whose primary
+        completion date is on or before that date — including overdue ones,
+        which may report at any time.
         """
         params = {
             "query.term": query,
@@ -44,5 +51,9 @@ class ClinicalTrialsClient:
         }
         if statuses:
             params["filter.overallStatus"] = "|".join(statuses)
+        if completes_by is not None:
+            params["filter.advanced"] = (
+                f"AREA[PrimaryCompletionDate]RANGE[MIN,{completes_by.isoformat()}]"
+            )
         data = self.http.get_json(STUDIES_URL, params, validate=_has_total)
         return int(data["totalCount"])

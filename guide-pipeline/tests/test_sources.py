@@ -77,3 +77,34 @@ def test_build_sources_uses_faster_interval_with_key():
     )
     # keys/tool flow through to the PubMed client
     assert with_key.pubmed.api_key == "K"
+
+
+def test_pubmed_titles_via_esummary(tmp_path):
+    def handler(request):
+        assert request.url.path.endswith("/esummary.fcgi")
+        assert dict(request.url.params)["id"] == "1,2"
+        return httpx.Response(
+            200,
+            json={"result": {"uids": ["1", "2"], "1": {"title": "First."}, "2": {"title": ""}}},
+        )
+
+    client = PubMedClient(http=http_for(handler, tmp_path))
+    assert client.titles(["1", "2"]) == [("1", "First.")]  # empty titles dropped
+    assert client.titles([]) == []
+
+
+def test_clinicaltrials_completes_by_filter(tmp_path):
+    from datetime import date
+
+    seen = {}
+
+    def handler(request):
+        seen["params"] = dict(request.url.params)
+        return httpx.Response(200, json={"totalCount": 3, "studies": []})
+
+    client = ClinicalTrialsClient(http=http_for(handler, tmp_path))
+    assert client.count("x", completes_by=date(2027, 9, 25)) == 3
+    assert (
+        seen["params"]["filter.advanced"]
+        == "AREA[PrimaryCompletionDate]RANGE[MIN,2027-09-25]"
+    )

@@ -170,6 +170,19 @@ class PubMedClient:
         data = self.http.get_json(ESEARCH_URL, params, validate=_has_count)
         return list(data["esearchresult"].get("idlist", []))
 
+    def titles(self, pmids: list[str]) -> list[tuple[str, str]]:
+        """(pmid, title) pairs via ESummary — titles only, no abstracts."""
+        if not pmids:
+            return []
+        params = {**self._base_params(), "id": ",".join(pmids)}
+        result = self.http.get_json(ESUMMARY_URL, params, validate=_has_result)["result"]
+        out: list[tuple[str, str]] = []
+        for uid in result.get("uids", []):
+            title = str(result.get(uid, {}).get("title", "")).strip()
+            if title:
+                out.append((uid, title))
+        return out
+
     def fetch_details(self, pmids: list[str]) -> list[Paper]:
         """Full records (incl. abstracts) for `pmids`, fetched via EFetch XML."""
         papers: list[Paper] = []

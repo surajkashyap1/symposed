@@ -10,8 +10,11 @@ proforma. Separate from the Symposed Next.js app in the parent repo. Build
 1. Every citation, PMID, DOI, title and count MUST come from an API response
    (PubMed / Europe PMC / ClinicalTrials.gov). The model NEVER supplies any of
    these from its own knowledge.
-2. There is NO include/exclude field anywhere. The pipeline suggests papers and
-   says why. The user decides what goes in their review.
+2. There is NO silent include/exclude field anywhere — no boolean, no hidden
+   verdict. Per the screening update (`docs/spec-update-screening.md`) a paper may
+   carry a VISIBLE graded status ("likely eligible" / "likely ineligible" /
+   "unclear, check full text") with a written reason and its evidence basis
+   (abstract or full text), framed as an estimate. The user decides what goes in.
 
 ## Conventions
 - Gate thresholds and limits are **settings** (env / `Thresholds`), never hardcoded.

@@ -1,32 +1,47 @@
-"""Step 3 — candidate review titles and feasibility gates.
+"""Stages 2-4 — candidate review titles, count-only triage, and the gates.
 
 The LLM proposes a batch of candidate review questions, each filling one of the
 build spec's 14 gap axes (superseded review, indirect comparison, ...). It supplies
-*only* the question, the axis, and a PubMed query for the primary studies that
-would answer it — never any counts, PMIDs or claims about how much exists
-(CLAUDE.md rule 1). This module then does the counting itself and applies the
-feasibility gates, whose thresholds all come from `Thresholds` settings.
+*only* the question, the axis, and a PubMed query for the question's CONCEPTS —
+never any counts, PMIDs or claims about how much exists (CLAUDE.md rule 1), and
+never publication-type filters: those are applied here, in code, so the three
+triage counts (spec Stage 3) all derive from one concept query:
 
-Gates that our three data sources can decide are applied automatically. Whether a
-protocol is already registered (PROSPERO) stays a manual human check — surfaced
-as a note, never auto-decided — because a human reviews every output and checks
-PROSPERO before anything reaches a customer.
+  records to screen  = concepts, all publication types
+  eligible studies   = concepts, primary-study designs only
+  recent reviews     = concepts, systematic reviews within the recency window
+
+Triage never fetches abstracts. The gates themselves live in `gates.py`.
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
 
+from .gates import DOWNGRADE, SYSTEMATIC, GateVerdict, TriageCounts, apply_gates
 from .landscape import FILTER_SYSTEMATIC_REVIEW, Landscape
 from .llm import LLMClient, LLMError
+from .prospero import ProsperoCheck, ProsperoMirror, check_title, match_key, similarity
 from .settings import Thresholds
 from .sources.clinicaltrials import ACTIVE_STATUSES, ClinicalTrialsClient
 from .sources.pubmed import PubMedClient
+
+# Design filter for "plausible eligible studies": drop publication types that
+# are not primary studies.
+FILTER_PRIMARY = (
+    'NOT (review[pt] OR systematic[sb] OR "meta-analysis"[pt] OR editorial[pt] '
+    'OR letter[pt] OR comment[pt] OR news[pt] OR "case reports"[pt])'
+)
+# Published review protocols (the spec's "published protocols via PubMed").
+FILTER_PROTOCOL = (
+    '(protocol[ti] AND (systematic[tiab] OR "scoping review"[tiab] OR meta-analys*[tiab]))'
+)
+_PROTOCOL_TITLES = 20  # most recent protocol titles fuzzy-matched per candidate
 
 _FIELD_TAG_RE = re.compile(r"\[[^\]]*\]")
 _BOOLEAN_RE = re.compile(r"\b(AND|OR|NOT)\b")
@@ -94,8 +109,8 @@ _SYSTEM_PROMPT = (
     "You help clinicians scope a first systematic review or audit. "
     "You return ONLY valid JSON. You NEVER state how many papers exist, and you "
     "NEVER invent PMIDs, DOIs or citations — a separate program counts the "
-    "literature. Each PubMed query you write must target PRIMARY studies that "
-    "would answer the question, not existing reviews."
+    "literature. Each PubMed query you write captures only the question's "
+    "concepts; the program adds publication-type filters itself."
 )
 
 
@@ -109,19 +124,22 @@ class Candidate:
 
 
 @dataclass(frozen=True)
-class GateResult:
-    passed: bool
-    reasons: list[str]  # rejection reasons; empty when passed
+class SearchRun:
+    """One query sent during triage (spec: record every search run)."""
+
+    source: str
+    query: str
+    result: int
+    run_at: str  # ISO timestamp
 
 
 @dataclass(frozen=True)
 class CandidateAssessment:
     candidate: Candidate
-    eligible_studies: int
-    recent_reviews: int
-    active_trials: Optional[int]  # None when the trials check could not be run
-    gate: GateResult
-    manual_checks: list[str]
+    counts: TriageCounts
+    verdict: GateVerdict
+    prospero: ProsperoCheck
+    searches: list[SearchRun]
     batch: int = 1  # which generation batch produced this candidate
 
 
@@ -131,6 +149,8 @@ class ScreenResult:
     survivors: list[CandidateAssessment]  # passed gates, ranked best-first
     top: Optional[CandidateAssessment]
     batches: int = 1  # how many batches were generated
+    # too few studies for a systematic review, but may suit a scoping review
+    downgraded: list[CandidateAssessment] = field(default_factory=list)
 
 
 def normalise_title(title: str) -> str:
@@ -189,7 +209,10 @@ def _build_prompt(
         f"{avoid_block}\n\n"
         'Return JSON of the form {"candidates": [{"title": str, "axis": str, '
         '"pubmed_query": str, "trials_query": str, "rationale": str}]}. The '
-        "pubmed_query must find PRIMARY studies (not reviews) answering that question. "
+        "pubmed_query is PubMed syntax for the question's CONCEPTS only (population or "
+        "condition, intervention or exposure, and a comparator or outcome if central) — "
+        "combine synonyms with OR, include a MeSH term where you are sure it exists, and "
+        "add NO publication-type, study-design or date filters. "
         "The trials_query is plain keywords for ClinicalTrials.gov — NO field tags, "
         "quotes or boolean operators. The rationale says what gap the question fills."
     )
@@ -260,7 +283,10 @@ def _top_up_prompt(
         "people. The axis value must be one of the axis names above, spelled exactly.\n\n"
         'Return JSON of the form {"candidates": [{"title": str, "axis": str, '
         '"pubmed_query": str, "trials_query": str, "rationale": str}]}. The '
-        "pubmed_query must find PRIMARY studies (not reviews) answering that question. "
+        "pubmed_query is PubMed syntax for the question's CONCEPTS only (population or "
+        "condition, intervention or exposure, and a comparator or outcome if central) — "
+        "combine synonyms with OR, include a MeSH term where you are sure it exists, and "
+        "add NO publication-type, study-design or date filters. "
         "The trials_query is plain keywords for ClinicalTrials.gov — NO field tags, "
         "quotes or boolean operators. The rationale says what gap the question fills."
     )
@@ -319,73 +345,92 @@ def generate_candidates(
     return candidates
 
 
-def apply_gates(
-    eligible_studies: int, recent_reviews: int, thresholds: Thresholds
-) -> GateResult:
-    """Automatic feasibility gates (all thresholds are settings)."""
-    reasons: list[str] = []
-    if eligible_studies < thresholds.min_eligible_studies:
-        reasons.append(
-            f"only {eligible_studies} eligible studies "
-            f"(< {thresholds.min_eligible_studies})"
-        )
-    if eligible_studies > thresholds.max_records_to_screen:
-        reasons.append(
-            f"{eligible_studies} records to screen "
-            f"(> {thresholds.max_records_to_screen})"
-        )
-    if recent_reviews > 0:
-        reasons.append(
-            f"{recent_reviews} systematic review(s) in the last "
-            f"{thresholds.recent_review_years} years"
-        )
-    return GateResult(passed=not reasons, reasons=reasons)
+def _published_protocols(
+    pubmed: PubMedClient, candidate: Candidate, runs: list[SearchRun], stamp: str
+) -> list[tuple[str, str, float]]:
+    """Published protocols on the question's concepts, scored against the title."""
+    query = f"({candidate.pubmed_query}) AND {FILTER_PROTOCOL}"
+    n = pubmed.count(query)
+    runs.append(SearchRun("PubMed", query, n, stamp))
+    if n == 0:
+        return []
+    key = match_key(candidate.title)
+    titles = pubmed.titles(pubmed.search_pmids(query, retmax=_PROTOCOL_TITLES))
+    scored = [(pmid, t, round(similarity(key, match_key(t)), 3)) for pmid, t in titles]
+    return sorted(scored, key=lambda p: p[2], reverse=True)
 
 
 def assess_candidate(
     pubmed: PubMedClient,
     clinicaltrials: ClinicalTrialsClient,
+    mirror: ProsperoMirror,
     candidate: Candidate,
     thresholds: Thresholds,
     *,
-    current_year: Optional[int] = None,
+    mirror_max_age_days: int = 10,
+    publication_type: str = SYSTEMATIC,
+    collaborators: int = 2,
+    today: Optional[date] = None,
     batch: int = 1,
 ) -> CandidateAssessment:
-    """Count the literature for one candidate and apply the gates."""
-    current_year = current_year or datetime.now(timezone.utc).year
-    eligible = pubmed.count(candidate.pubmed_query)
-    recent_reviews = pubmed.count(
-        f"({candidate.pubmed_query}) AND {FILTER_SYSTEMATIC_REVIEW}",
-        min_year=current_year - thresholds.recent_review_years + 1,
+    """Stage 3 count-only triage for one candidate, then the Stage 4 gates."""
+    today = today or datetime.now(timezone.utc).date()
+    stamp = datetime.now(timezone.utc).isoformat()
+    runs: list[SearchRun] = []
+
+    def pm_count(query: str, **kw) -> int:
+        n = pubmed.count(query, **kw)
+        label = query if not kw else f"{query} [pub year >= {kw['min_year']}]"
+        runs.append(SearchRun("PubMed", label, n, stamp))
+        return n
+
+    q = candidate.pubmed_query
+    records = pm_count(q)
+    eligible = pm_count(f"({q}) {FILTER_PRIMARY}")
+    recent = pm_count(
+        f"({q}) AND {FILTER_SYSTEMATIC_REVIEW}",
+        min_year=today.year - thresholds.recent_review_years + 1,
     )
-    # Advisory only (not a gate): a plain-keyword query, and never fatal — one
-    # source failing on one candidate must not abort the whole screen.
-    active_trials: Optional[int]
+    protocols = _published_protocols(pubmed, candidate, runs, stamp)
+
+    # Never fatal: one registry failing must not abort the whole screen.
+    trials_q = candidate.trials_query or plain_terms(q)
+    completes_by = today + timedelta(days=round(thresholds.active_trial_completion_months * 30.44))
+    soon: Optional[int]
     try:
-        active_trials = clinicaltrials.count(
-            candidate.trials_query or plain_terms(candidate.pubmed_query),
-            statuses=ACTIVE_STATUSES,
-        )
+        soon = clinicaltrials.count(trials_q, statuses=ACTIVE_STATUSES, completes_by=completes_by)
+        runs.append(SearchRun(
+            "ClinicalTrials.gov",
+            f"{trials_q} [active, completing by {completes_by}]", soon, stamp,
+        ))
     except httpx.HTTPError:
-        active_trials = None
+        soon = None
 
-    gate = apply_gates(eligible, recent_reviews, thresholds)
-
-    manual_checks = ["Check PROSPERO for a registered or ongoing protocol"]
-    if active_trials is None:
-        manual_checks.append("Trial check failed — verify ClinicalTrials.gov manually")
-    elif active_trials > 0:
-        manual_checks.append(
-            f"{active_trials} trial(s) still running — confirm none report within "
-            f"{thresholds.active_trial_completion_months} months"
-        )
+    prospero = check_title(
+        mirror,
+        candidate.title,
+        max_age_days=mirror_max_age_days,
+        reject_threshold=thresholds.prospero_reject_similarity,
+        review_threshold=thresholds.prospero_review_similarity,
+        today=today,
+    )
+    counts = TriageCounts(
+        records_to_screen=records,
+        eligible_studies=eligible,
+        recent_reviews=recent,
+        trials_reporting_soon=soon,
+        protocol_matches=protocols[:3],
+    )
+    verdict = apply_gates(
+        counts, prospero, thresholds,
+        publication_type=publication_type, collaborators=collaborators,
+    )
     return CandidateAssessment(
         candidate=candidate,
-        eligible_studies=eligible,
-        recent_reviews=recent_reviews,
-        active_trials=active_trials,
-        gate=gate,
-        manual_checks=manual_checks,
+        counts=counts,
+        verdict=verdict,
+        prospero=prospero,
+        searches=runs,
         batch=batch,
     )
 
@@ -393,32 +438,38 @@ def assess_candidate(
 def rank_survivors(
     assessments: list[CandidateAssessment],
 ) -> list[CandidateAssessment]:
-    """Passed candidates, most evidence first (still under the screening cap)."""
-    survivors = [a for a in assessments if a.gate.passed]
-    return sorted(survivors, key=lambda a: a.eligible_studies, reverse=True)
+    """Passed candidates, most evidence first (Stage 4b scoring replaces this)."""
+    survivors = [a for a in assessments if a.verdict.passed]
+    return sorted(survivors, key=lambda a: a.counts.eligible_studies, reverse=True)
 
 
 def screen_candidates(
     llm: LLMClient,
     pubmed: PubMedClient,
     clinicaltrials: ClinicalTrialsClient,
+    mirror: ProsperoMirror,
     topic: str,
     thresholds: Thresholds,
     *,
     landscape: Optional[Landscape] = None,
-    current_year: Optional[int] = None,
+    mirror_max_age_days: int = 10,
+    publication_type: str = SYSTEMATIC,
+    collaborators: int = 2,
+    today: Optional[date] = None,
 ) -> ScreenResult:
-    """End to end: generate, count + gate, rank — batch by batch (spec §1.2).
+    """End to end: generate, triage + gate, rank — batch by batch (spec §1.2).
 
+    Refuses to start on a stale PROSPERO mirror, before any API is called.
     Every candidate in a batch is evaluated (counts are cheap). If none passes,
     a new batch is generated with every rejected title passed back as negative
     context; once any candidate passes, no further batches are generated.
     """
+    mirror.ensure_fresh(max_age_days=mirror_max_age_days, today=today)
     assessments: list[CandidateAssessment] = []
     batches = 0
     while batches < thresholds.max_candidate_batches:
         batches += 1
-        rejected = tuple(a.candidate.title for a in assessments if not a.gate.passed)
+        rejected = tuple(a.candidate.title for a in assessments if not a.verdict.passed)
         candidates = generate_candidates(
             llm,
             topic,
@@ -433,15 +484,19 @@ def screen_candidates(
             assess_candidate(
                 pubmed,
                 clinicaltrials,
+                mirror,
                 c,
                 thresholds,
-                current_year=current_year,
+                mirror_max_age_days=mirror_max_age_days,
+                publication_type=publication_type,
+                collaborators=collaborators,
+                today=today,
                 batch=batches,
             )
             for c in candidates
         ]
         assessments.extend(batch)
-        if any(a.gate.passed for a in batch):
+        if any(a.verdict.passed for a in batch):
             break
 
     survivors = rank_survivors(assessments)
@@ -450,4 +505,5 @@ def screen_candidates(
         survivors=survivors,
         top=survivors[0] if survivors else None,
         batches=batches,
+        downgraded=[a for a in assessments if a.verdict.outcome == DOWNGRADE],
     )

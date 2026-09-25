@@ -42,13 +42,24 @@ v1 above was the cut-down slice. We are now aligning it with the full
   similarity), full harvest, weekly delta, manual export import, staleness guard,
   per-check record of dates + search terms (§3). All acquisition is in
   `prospero/adapter.py` — a proper CRD feed replaces that one file.
-- **A3 — Stage 3/4 gates**: three separate count queries per candidate; the full
-  six gates (registered protocol, imminent trials, heterogeneity).
-- **A4 — Stage 4b scoring + Stage 5 re-score + 5b tie break** (with override log).
-- **A5 — Database schema** (§5 tables, unique normalised-title index) + Sheets sync.
-- **A6 — More sources**: OpenAlex, Semantic Scholar, CORE, WHO ICTRP, Crossref.
-- **A7 — Full 26-section guide** with the verbatim statements (§6).
-- **A8 — Stage 6 verification screen + weekly batch scheduler.**
+- **A3 — Stage 3/4 gates** ✅: three count queries per candidate from one
+  concept query (records to screen / eligible primary studies / recent SRs),
+  published protocols via PubMed, trials completing within 12 months, PROSPERO
+  mirror check. Gates in `gates.py` with outcome + value + threshold each:
+  REJECT / DOWNGRADE (scoping or narrative) / FLAG / PASS. Every search recorded.
+  (Heterogeneity gate needs abstracts → moves to A5.)
+- **A4 — Per-task model routing + Claude provider**: each task picks its own
+  model and reasoning effort (table in `docs/spec-update-screening.md`).
+- **A5 — Stage 5 v2 (spec update)**: attribute extraction, then full-recall
+  screening against the review's criteria (likely eligible / likely ineligible /
+  unclear, check full text + reason + evidence basis), Europe PMC open-access full
+  text, DOI list for unclear-without-OA, heterogeneity gate. Replaces the
+  suggested-use taxonomy. Recall test on 3–4 known reviews + consistency test.
+- **A6 — Stage 4b scoring + Stage 5 re-score + 5b tie break** (with override log).
+- **A7 — Database schema** (§5 tables, unique normalised-title index) + Sheets sync.
+- **A8 — More sources**: OpenAlex, Semantic Scholar, CORE, WHO ICTRP, Crossref.
+- **A9 — Full 26-section guide** with the verbatim statements (§6).
+- **A10 — Stage 6 verification screen + weekly batch scheduler.**
 
 Models (spec): Claude Sonnet 5 for titles + drafting, Claude Haiku 4.5 for
 tagging. We are trialling **Groq's free model first** and will switch to Claude if

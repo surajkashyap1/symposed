@@ -94,44 +94,57 @@ def landscape(topic: str) -> int:
 
 
 def candidates(topic: str) -> int:
-    """Step 3 live check: generate candidate titles, count + gate each, rank survivors."""
+    """Stages 2-4 live: generate candidates, triage + gate each, rank survivors."""
     settings = Settings.load()
     if settings.llm_provider == "groq" and not settings.groq_api_key:
         print("Set GROQ_API_KEY in .env first (LLM_PROVIDER=groq).")
         return 2
     sources = build_sources(settings)
     llm = build_llm(settings)
+    mirror = ProsperoMirror(settings.prospero_db)
     print(f'Candidates for: "{topic}"  [{settings.llm_provider}:{settings.groq_model}]\n')
     try:
         result = screen_candidates(
-            llm, sources.pubmed, sources.clinicaltrials, topic, settings.thresholds
+            llm,
+            sources.pubmed,
+            sources.clinicaltrials,
+            mirror,
+            topic,
+            settings.thresholds,
+            mirror_max_age_days=settings.prospero_max_age_days,
         )
+    except StaleMirrorError as exc:
+        print(f"  REFUSING TO RUN: {exc}")
+        return 1
     except (LLMError, NotImplementedError) as exc:
         print(f"  LLM error: {exc}")
         return 1
+    finally:
+        mirror.close()
 
     for a in result.assessments:
-        tag = "PASS  " if a.gate.passed else "REJECT"
-        trials = "?" if a.active_trials is None else f"{a.active_trials:,}"
-        print(f"  [{tag}] {a.candidate.title}")
+        c = a.counts
+        soon = "?" if c.trials_reporting_soon is None else f"{c.trials_reporting_soon:,}"
+        top_match = a.prospero.matches[0].score if a.prospero.matches else 0.0
+        print(f"  [{a.verdict.outcome.upper():<9}] {a.candidate.title}")
         print(
-            f"          batch {a.batch} · axis={a.candidate.axis or '-'}"
-            f" · eligible={a.eligible_studies:,}"
-            f" · recent SRs={a.recent_reviews:,} · active trials={trials}"
+            f"              batch {a.batch} · {a.candidate.axis} · to screen={c.records_to_screen:,}"
+            f" · eligible={c.eligible_studies:,} · recent SRs={c.recent_reviews:,}"
+            f" · PROSPERO={top_match:.2f} · trials soon={soon}"
         )
-        if a.gate.reasons:
-            print(f"          rejected: {'; '.join(a.gate.reasons)}")
+        for reason in a.verdict.reasons:
+            print(f"              - {reason}")
     print(f"\n  Batches generated: {result.batches}")
     if result.top is not None:
         print(f"  Top pick: {result.top.candidate.title}")
-        print(f"            ({result.top.eligible_studies:,} eligible studies)")
-        for note in result.top.manual_checks:
-            print(f"            manual: {note}")
+        print(f"            ({result.top.counts.eligible_studies:,} eligible studies)")
     else:
         print(
             f"  No candidate passed the gates in {result.batches} batch(es) — "
             "try a broader or different topic."
         )
+    if result.downgraded:
+        print(f"  {len(result.downgraded)} candidate(s) could suit a scoping or narrative review.")
     return 0
 
 

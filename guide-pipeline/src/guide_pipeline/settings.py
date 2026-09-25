@@ -38,10 +38,11 @@ def _get_float(name: str, default: float) -> float:
 class Thresholds:
     """Step 3 gate thresholds. Settings, not hardcoded (see CLAUDE.md)."""
 
-    min_eligible_studies: int = 8               # reject below this many eligible studies
-    max_records_to_screen: int = 400            # reject if more than this to screen
+    min_eligible_studies: int = 8               # fewer than this is too few to pool
+    scoping_min_studies: int = 5                # ...downgrade to scoping/narrative down to this
+    max_records_to_screen: int = 400            # reject above this to screen (team of 2; scales)
     recent_review_years: int = 4                # reject if an SR/MA exists within N years (3-5)
-    active_trial_completion_months: int = 12    # reject if an active trial completes within N months
+    active_trial_completion_months: int = 12    # flag trials due to complete within N months
     candidate_titles_min: int = 8               # LLM generates this many candidate titles...
     candidate_titles_max: int = 12              # ...up to this many, across the 14 axes
     candidate_min_axes: int = 6                 # a batch must span at least this many axes
@@ -59,6 +60,7 @@ class Thresholds:
     def from_env(cls) -> "Thresholds":
         return cls(
             min_eligible_studies=_get_int("MIN_ELIGIBLE_STUDIES", 8),
+            scoping_min_studies=_get_int("SCOPING_MIN_STUDIES", 5),
             max_records_to_screen=_get_int("MAX_RECORDS_TO_SCREEN", 400),
             recent_review_years=_get_int("RECENT_REVIEW_YEARS", 4),
             active_trial_completion_months=_get_int("ACTIVE_TRIAL_COMPLETION_MONTHS", 12),

@@ -28,7 +28,7 @@ class FakeLLM:
         self.payload = payload
         self.calls = []
 
-    def complete_json(self, system, user):
+    def complete_json(self, system, user, schema=None):
         self.calls.append((system, user))
         return self.payload
 
@@ -60,7 +60,7 @@ class SeqLLM:
         self.payloads = list(payloads)
         self.calls = []
 
-    def complete_json(self, system, user):
+    def complete_json(self, system, user, schema=None):
         self.calls.append((system, user))
         idx = min(len(self.calls) - 1, len(self.payloads) - 1)
         return self.payloads[idx]
@@ -438,3 +438,16 @@ def test_publication_type_is_named_in_the_prompt():
     llm = FakeLLM(six_axis_batch())
     generate_candidates(llm, "sepsis", preferences=RequestPreferences(publication_type="narrative review"))
     assert "narrative review" in llm.calls[0][1]
+
+
+def test_candidate_calls_send_the_axis_enum_schema():
+    seen = []
+
+    class SchemaLLM(FakeLLM):
+        def complete_json(self, system, user, schema=None):
+            seen.append(schema)
+            return super().complete_json(system, user)
+
+    generate_candidates(SchemaLLM(six_axis_batch()), "sepsis")
+    axis = seen[0]["properties"]["candidates"]["items"]["properties"]["axis"]
+    assert axis["enum"] == list(AXES)

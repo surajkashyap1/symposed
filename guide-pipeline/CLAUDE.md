@@ -19,8 +19,10 @@ proforma. Separate from the Symposed Next.js app in the parent repo. Build
 ## Conventions
 - Gate thresholds and limits are **settings** (env / `Thresholds`), never hardcoded.
 - Cache every external API response; respect rate limits (PubMed 10 req/s with a key).
-- LLM calls use structured JSON output the code validates. **Groq first**
-  (`LLM_PROVIDER=groq`); switchable to Claude (`anthropic`) with no code change.
+- LLM calls use structured JSON output the code validates. **Claude Sonnet 5 for
+  every task**; each call names its task (`build_llm(settings, "<task>")`) so it
+  gets that task's effort/thinking from `llm.TASKS`. New task → add it there.
+  Live runs cost money: print the `UsageMeter` summary, and keep tests on fakes.
 - PROSPERO access goes ONLY through `prospero/adapter.py` (undocumented endpoint,
   may be replaced by a CRD feed). The pipeline queries the local mirror, never
   PROSPERO per title. Checks refuse to run on a stale mirror — never bypass that.

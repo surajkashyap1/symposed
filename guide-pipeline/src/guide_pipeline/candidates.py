@@ -105,6 +105,31 @@ HIGH_YIELD_AXES = (
 
 _AXIS_LOOKUP = {name.lower(): name for name in AXES}
 
+# Enforced by providers with structured outputs (Claude): the axis can only be
+# one of the 14 names, so misspelled or invented axes never come back.
+CANDIDATES_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "candidates": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "axis": {"type": "string", "enum": list(AXES)},
+                    "pubmed_query": {"type": "string"},
+                    "trials_query": {"type": "string"},
+                    "rationale": {"type": "string"},
+                },
+                "required": ["title", "axis", "pubmed_query", "trials_query", "rationale"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["candidates"],
+    "additionalProperties": False,
+}
+
 _SYSTEM_PROMPT = (
     "You help clinicians scope a first systematic review or audit. "
     "You return ONLY valid JSON. You NEVER state how many papers exist, and you "
@@ -377,7 +402,7 @@ def generate_candidates(
         preferences, batch, failed_axes,
     )
     candidates = _parse_candidates(
-        llm.complete_json(_SYSTEM_PROMPT, user), max_per_axis, avoid_keys
+        llm.complete_json(_SYSTEM_PROMPT, user, schema=CANDIDATES_SCHEMA), max_per_axis, avoid_keys
     )
     for _ in range(top_ups):
         used = {c.axis for c in candidates}
@@ -388,7 +413,9 @@ def generate_candidates(
         try:
             extra = _parse_candidates(
                 llm.complete_json(
-                    _SYSTEM_PROMPT, _top_up_prompt(topic, candidates, unused, needed)
+                    _SYSTEM_PROMPT,
+                    _top_up_prompt(topic, candidates, unused, needed),
+                    schema=CANDIDATES_SCHEMA,
                 ),
                 max_per_axis,
                 avoid_keys,

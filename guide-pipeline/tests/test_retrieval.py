@@ -57,7 +57,7 @@ class FakeLLM:
         self.payload = payload
         self.calls = 0
 
-    def complete_json(self, system, user):
+    def complete_json(self, system, user, schema=None):
         self.calls += 1
         return self.payload
 

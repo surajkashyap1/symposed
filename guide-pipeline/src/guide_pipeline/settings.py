@@ -80,12 +80,12 @@ class Settings:
     ncbi_api_key: Optional[str] = None
     ncbi_tool: str = "symposed-guide-pipeline"
     ncbi_email: Optional[str] = None
-    # llm — Groq first, switchable to Anthropic with no code change
-    llm_provider: str = "groq"
+    # llm — Claude Sonnet 5 for every task (effort per task); Groq selectable
+    llm_provider: str = "anthropic"
     groq_api_key: Optional[str] = None
     groq_model: str = "openai/gpt-oss-120b"
     anthropic_api_key: Optional[str] = None
-    anthropic_model: str = "claude-sonnet-4-6"
+    anthropic_model: str = "claude-sonnet-5"
     llm_temperature: float = 0.4
     # step 2 landscape: how many recent years of the publication trend to fetch
     landscape_years: int = 10
@@ -103,11 +103,11 @@ class Settings:
             ncbi_api_key=_get("NCBI_API_KEY"),
             ncbi_tool=_get("NCBI_TOOL", "symposed-guide-pipeline") or "symposed-guide-pipeline",
             ncbi_email=_get("NCBI_EMAIL"),
-            llm_provider=(_get("LLM_PROVIDER", "groq") or "groq").lower(),
+            llm_provider=(_get("LLM_PROVIDER", "anthropic") or "anthropic").lower(),
             groq_api_key=_get("GROQ_API_KEY"),
             groq_model=_get("GROQ_MODEL", "openai/gpt-oss-120b") or "openai/gpt-oss-120b",
             anthropic_api_key=_get("ANTHROPIC_API_KEY"),
-            anthropic_model=_get("ANTHROPIC_MODEL", "claude-sonnet-4-6") or "claude-sonnet-4-6",
+            anthropic_model=_get("ANTHROPIC_MODEL", "claude-sonnet-5") or "claude-sonnet-5",
             llm_temperature=float(_get("LLM_TEMPERATURE", "0.4") or "0.4"),
             landscape_years=_get_int("LANDSCAPE_YEARS", 10),
             prospero_db=Path(_get("PROSPERO_DB", "data/prospero.sqlite") or "data/prospero.sqlite"),

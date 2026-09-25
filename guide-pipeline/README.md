@@ -48,8 +48,11 @@ v1 above was the cut-down slice. We are now aligning it with the full
   mirror check. Gates in `gates.py` with outcome + value + threshold each:
   REJECT / DOWNGRADE (scoping or narrative) / FLAG / PASS. Every search recorded.
   (Heterogeneity gate needs abstracts → moves to A5.)
-- **A4 — Per-task model routing + Claude provider**: each task picks its own
-  model and reasoning effort (table in `docs/spec-update-screening.md`).
+- **A4 — Per-task model routing + Claude provider** ✅: Claude Sonnet 5 for every
+  task, effort + thinking per task (`llm.TASKS`, from the table in
+  `docs/spec-update-screening.md`), overridable per task via `MODEL_<TASK>` /
+  `EFFORT_<TASK>` / `THINKING_<TASK>`. Structured outputs enforce each call's JSON
+  schema (axes limited to the 14). Every run prints tokens and dollar cost.
 - **A5 — Stage 5 v2 (spec update)**: attribute extraction, then full-recall
   screening against the review's criteria (likely eligible / likely ineligible /
   unclear, check full text + reason + evidence basis), Europe PMC open-access full
@@ -61,9 +64,10 @@ v1 above was the cut-down slice. We are now aligning it with the full
 - **A9 — Full 26-section guide** with the verbatim statements (§6).
 - **A10 — Stage 6 verification screen + weekly batch scheduler.**
 
-Models (spec): Claude Sonnet 5 for titles + drafting, Claude Haiku 4.5 for
-tagging. We are trialling **Groq's free model first** and will switch to Claude if
-quality is too low — the LLM layer is provider-agnostic.
+Model (decided 2026-09-25): **Claude Sonnet 5 for every task**, reasoning effort
+set per task. Groq proved too weak (narrow searches, flaky JSON) and stays only as
+a free local option (`LLM_PROVIDER=groq`). First live run: a two-batch candidate
+screen cost about $0.13.
 
 ## PROSPERO mirror
 
@@ -107,8 +111,9 @@ cp .env.example .env      # then fill in the keys
 
 Get the keys:
 - **NCBI API key** (free): https://www.ncbi.nlm.nih.gov/account/ → Settings → API Key Management
-- **Groq API key** (free tier): https://console.groq.com/keys
-- **Anthropic API key** (later, if switching to Claude): https://console.anthropic.com/
+- **Anthropic API key**: platform.claude.com -> API keys (billed separately from
+  any Claude subscription; set a monthly spend limit)
+- **Groq API key** (optional, free local trials): https://console.groq.com/keys
 
 ## Run
 

@@ -10,7 +10,7 @@ from .candidates import TOPIC_ANY, TOPIC_EXACT, TOPIC_SPECIALTY, RequestPreferen
 from .gates import LIGHTER_TYPES, SYSTEMATIC
 from .guide import build_guide
 from .landscape import assess_landscape
-from .llm import LLMError, build_llm
+from .llm import LLMClient, LLMError, UsageMeter, build_llm, task_config
 from .prospero import (
     EndpointSource,
     ProsperoError,
@@ -27,10 +27,34 @@ from .sources import build_sources
 from .workspace import create_workspace
 
 
+def _llm(settings: Settings, task: str, meter: UsageMeter) -> LLMClient | None:
+    """The configured client for `task`, or None (with a message) if unusable."""
+    try:
+        return build_llm(settings, task, meter=meter)
+    except LLMError as exc:
+        print(f"  {exc} (see .env.example)")
+        return None
+
+
+def _model_label(settings: Settings, task: str) -> str:
+    if settings.llm_provider != "anthropic":
+        return f"{settings.llm_provider}:{settings.groq_model}"
+    cfg = task_config(settings, task)
+    thinking = "thinking on" if cfg.thinking else "thinking off"
+    return f"{cfg.model}, effort {cfg.effort}, {thinking}"
+
+
+def _print_cost(meter: UsageMeter) -> None:
+    if meter.calls:
+        print(f"\n  Model usage: {meter.summary()}")
+
+
 def doctor() -> int:
     settings = Settings.load()
     print("Guide pipeline — setup check\n")
     print(f"  LLM provider : {settings.llm_provider}")
+    if settings.llm_provider == "anthropic":
+        print(f"  Model        : {settings.anthropic_model} (effort set per task)")
     print(f"  Output dir   : {settings.output_dir}")
     print("  API keys:")
     for name, value in (
@@ -139,13 +163,13 @@ def candidates(topic: str, prefs: RequestPreferences | None = None) -> int:
     """Stages 2-4 live: generate candidates, triage + gate each, rank survivors."""
     prefs = prefs or RequestPreferences()
     settings = Settings.load()
-    if settings.llm_provider == "groq" and not settings.groq_api_key:
-        print("Set GROQ_API_KEY in .env first (LLM_PROVIDER=groq).")
-        return 2
     sources = build_sources(settings)
-    llm = build_llm(settings)
+    meter = UsageMeter()
+    llm = _llm(settings, "candidate_generation", meter)
+    if llm is None:
+        return 2
     mirror = ProsperoMirror(settings.prospero_db)
-    print(f'Candidates for: "{topic}"  [{settings.llm_provider}:{settings.groq_model}]\n')
+    print(f'Candidates for: "{topic}"  [{_model_label(settings, "candidate_generation")}]\n')
     try:
         result = screen_candidates(
             llm,
@@ -160,8 +184,9 @@ def candidates(topic: str, prefs: RequestPreferences | None = None) -> int:
     except StaleMirrorError as exc:
         print(f"  REFUSING TO RUN: {exc}")
         return 1
-    except (LLMError, NotImplementedError) as exc:
+    except LLMError as exc:
         print(f"  LLM error: {exc}")
+        _print_cost(meter)
         return 1
     finally:
         mirror.close()
@@ -195,18 +220,19 @@ def candidates(topic: str, prefs: RequestPreferences | None = None) -> int:
         print(f"            ({result.top.counts.eligible_studies:,} eligible studies)")
     else:
         print(f"  Email the user before going further: {result.contact_reason}.")
+    _print_cost(meter)
     return 0
 
 
 def retrieve_cmd(query: str) -> int:
     """Step 4 live check: fetch full records for a chosen query, dedupe, tag."""
     settings = Settings.load()
-    if settings.llm_provider == "groq" and not settings.groq_api_key:
-        print("Set GROQ_API_KEY in .env first (LLM_PROVIDER=groq).")
-        return 2
     sources = build_sources(settings)
-    llm = build_llm(settings)
-    print(f'Retrieving for: "{query}"\n')
+    meter = UsageMeter()
+    llm = _llm(settings, "paper_tagging", meter)
+    if llm is None:
+        return 2
+    print(f'Retrieving for: "{query}"  [{_model_label(settings, "paper_tagging")}]\n')
     try:
         result = retrieve(
             sources.pubmed,
@@ -214,8 +240,9 @@ def retrieve_cmd(query: str) -> int:
             query,
             max_records=settings.thresholds.max_records_to_screen,
         )
-    except (LLMError, NotImplementedError) as exc:
+    except LLMError as exc:
         print(f"  LLM error: {exc}")
+        _print_cost(meter)
         return 1
 
     for t in result.papers:
@@ -224,17 +251,18 @@ def retrieve_cmd(query: str) -> int:
         print(f"  [{year}] PMID {p.pmid} — {p.title}")
         print(f"          use: {t.suggested_use}" + (f" — {t.reason}" if t.reason else ""))
     print(f"\n  {len(result.papers)} papers retrieved and tagged (deduped).")
+    _print_cost(meter)
     return 0
 
 
 def guide_cmd(title: str, query: str) -> int:
     """Step 5: retrieve for `query`, then write the guide.docx + results.json."""
     settings = Settings.load()
-    if settings.llm_provider == "groq" and not settings.groq_api_key:
-        print("Set GROQ_API_KEY in .env first (LLM_PROVIDER=groq).")
-        return 2
     sources = build_sources(settings)
-    llm = build_llm(settings)
+    meter = UsageMeter()
+    llm = _llm(settings, "paper_tagging", meter)
+    if llm is None:
+        return 2
     print(f'Building guide: "{title}"\n  query: {query}\n')
     try:
         result = retrieve(
@@ -243,8 +271,9 @@ def guide_cmd(title: str, query: str) -> int:
             query,
             max_records=settings.thresholds.max_records_to_screen,
         )
-    except (LLMError, NotImplementedError) as exc:
+    except LLMError as exc:
         print(f"  LLM error: {exc}")
+        _print_cost(meter)
         return 1
 
     search_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -256,6 +285,7 @@ def guide_cmd(title: str, query: str) -> int:
     print(f"  {len(result.papers)} papers retrieved.")
     print(f"  Wrote {path}")
     print(f"  Wrote {workspace.results_path}")
+    _print_cost(meter)
     return 0
 
 

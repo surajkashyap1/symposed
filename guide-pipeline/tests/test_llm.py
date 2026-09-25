@@ -7,7 +7,9 @@ from guide_pipeline.llm import (
     AnthropicClient,
     GroqClient,
     LLMError,
+    UsageMeter,
     build_llm,
+    task_config,
 )
 from guide_pipeline.settings import Settings
 
@@ -93,9 +95,108 @@ def test_groq_raises_on_non_json_content():
         groq_with(handler).complete_json("s", "u")
 
 
-def test_anthropic_is_not_implemented():
-    with pytest.raises(NotImplementedError):
-        AnthropicClient(api_key="x").complete_json("s", "u")
+from types import SimpleNamespace
+
+
+class FakeAnthropic:
+    """Stands in for anthropic.Anthropic: records create() kwargs, returns canned replies."""
+
+    def __init__(self, *replies):
+        self.replies = list(replies)
+        self.calls = []
+        self.messages = self
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.replies.pop(0)
+
+
+def reply(text, *, stop="end_turn", inp=1000, out=500, cache_write=0, cache_read=0):
+    return SimpleNamespace(
+        content=[SimpleNamespace(type="thinking", thinking=""), SimpleNamespace(type="text", text=text)],
+        stop_reason=stop,
+        stop_details=None,
+        usage=SimpleNamespace(
+            input_tokens=inp,
+            output_tokens=out,
+            cache_creation_input_tokens=cache_write,
+            cache_read_input_tokens=cache_read,
+        ),
+    )
+
+
+SCHEMA = {"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"],
+          "additionalProperties": False}
+
+
+def test_anthropic_sends_task_effort_thinking_and_schema():
+    fake = FakeAnthropic(reply('{"a": 1}'))
+    client = AnthropicClient(
+        api_key="k", model="claude-sonnet-5", effort="high", thinking=True, client=fake
+    )
+    assert client.complete_json("sys", "user", schema=SCHEMA) == {"a": 1}
+    call = fake.calls[0]
+    assert call["model"] == "claude-sonnet-5" and call["system"] == "sys"
+    assert call["messages"] == [{"role": "user", "content": "user"}]
+    assert call["thinking"] == {"type": "adaptive"}
+    assert call["output_config"] == {
+        "effort": "high", "format": {"type": "json_schema", "schema": SCHEMA}
+    }
+
+
+def test_anthropic_thinking_off_and_no_schema():
+    fake = FakeAnthropic(reply('```json\n{"a": 2}\n```'))
+    client = AnthropicClient(api_key="k", effort="low", thinking=False, client=fake)
+    assert client.complete_json("s", "u") == {"a": 2}  # fenced JSON tolerated
+    call = fake.calls[0]
+    assert call["thinking"] == {"type": "disabled"}
+    assert call["output_config"] == {"effort": "low"}
+
+
+def test_anthropic_refusal_and_truncation_raise():
+    with pytest.raises(LLMError, match="refused"):
+        AnthropicClient(api_key="k", client=FakeAnthropic(reply("", stop="refusal"))).complete_json("s", "u")
+    with pytest.raises(LLMError, match="max_tokens"):
+        AnthropicClient(api_key="k", client=FakeAnthropic(reply('{"a"', stop="max_tokens"))).complete_json("s", "u")
+    with pytest.raises(LLMError, match="valid JSON"):
+        AnthropicClient(api_key="k", client=FakeAnthropic(reply("not json"))).complete_json("s", "u")
+
+
+def test_usage_meter_prices_every_call():
+    meter = UsageMeter()
+    fake = FakeAnthropic(
+        reply('{"a": 1}', inp=1_000_000, out=100_000),
+        reply('{"a": 1}', inp=0, out=0, cache_write=1_000_000, cache_read=1_000_000),
+    )
+    client = AnthropicClient(api_key="k", model="claude-sonnet-5", client=fake, meter=meter, task="t")
+    client.complete_json("s", "u")
+    client.complete_json("s", "u")
+    # $2/M input + $10/M output; cache writes 1.25x input, reads 0.1x input
+    assert meter.cost_usd == pytest.approx(2.0 + 1.0 + 2.5 + 0.2)
+    assert meter.calls == 2 and meter.by_task["t"] == pytest.approx(5.7)
+
+
+def test_task_settings_follow_the_spec_table_and_env_overrides(monkeypatch):
+    s = Settings(llm_provider="anthropic", anthropic_api_key="k")
+    extraction = task_config(s, "attribute_extraction")
+    assert (extraction.model, extraction.effort, extraction.thinking) == ("claude-sonnet-5", "low", False)
+    assert task_config(s, "candidate_generation").effort == "high"
+    assert task_config(s, "tie_break").effort == "max"
+    monkeypatch.setenv("EFFORT_CANDIDATE_GENERATION", "xhigh")
+    monkeypatch.setenv("MODEL_CANDIDATE_GENERATION", "claude-fable-5-1")
+    gen = task_config(s, "candidate_generation")
+    assert (gen.model, gen.effort) == ("claude-fable-5-1", "xhigh")
+    with pytest.raises(LLMError):
+        task_config(s, "no_such_task")
+
+
+def test_build_llm_anthropic_is_configured_per_task():
+    s = Settings(llm_provider="anthropic", anthropic_api_key="k")
+    client = build_llm(s, task="screening")
+    assert isinstance(client, AnthropicClient)
+    assert (client.effort, client.thinking, client.task) == ("medium", True, "screening")
+    with pytest.raises(LLMError):
+        build_llm(Settings(llm_provider="anthropic", anthropic_api_key=None))
 
 
 def test_build_llm_groq_requires_key():
@@ -109,11 +210,6 @@ def test_build_llm_groq_requires_key():
 def test_build_llm_unknown_provider():
     with pytest.raises(LLMError):
         build_llm(Settings(llm_provider="mystery"))
-
-
-def test_build_llm_anthropic_returns_stub():
-    client = build_llm(Settings(llm_provider="anthropic", anthropic_api_key="k"))
-    assert isinstance(client, AnthropicClient)
 
 
 def _groq_sleeping(handler, sleeps):

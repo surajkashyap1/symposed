@@ -25,7 +25,8 @@ def _clear_env(monkeypatch):
 def test_defaults(monkeypatch):
     _clear_env(monkeypatch)
     settings = Settings.load()
-    assert settings.llm_provider == "groq"
+    assert settings.llm_provider == "anthropic"
+    assert settings.anthropic_model == "claude-sonnet-5"
     assert settings.ncbi_api_key is None
     assert settings.output_dir.name == "output"
     assert settings.thresholds == Thresholds()
@@ -54,6 +55,7 @@ def test_thresholds_override_from_env(monkeypatch):
 
 def test_missing_keys_for_groq(monkeypatch):
     _clear_env(monkeypatch)
+    monkeypatch.setenv("LLM_PROVIDER", "groq")
     missing = Settings.load().missing_keys()
     assert missing == ["NCBI_API_KEY", "GROQ_API_KEY"]
 
@@ -68,5 +70,5 @@ def test_missing_keys_for_anthropic(monkeypatch):
 def test_no_missing_keys_when_configured(monkeypatch):
     _clear_env(monkeypatch)
     monkeypatch.setenv("NCBI_API_KEY", "x")
-    monkeypatch.setenv("GROQ_API_KEY", "y")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "y")
     assert Settings.load().missing_keys() == []

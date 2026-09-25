@@ -31,6 +31,27 @@ USE_CATEGORIES = (
     "Excluded but contextually relevant",
 )
 
+TAGS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "tags": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "pmid": {"type": "string"},
+                    "suggested_use": {"type": "string", "enum": list(USE_CATEGORIES)},
+                    "reason": {"type": "string"},
+                },
+                "required": ["pmid", "suggested_use", "reason"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["tags"],
+    "additionalProperties": False,
+}
+
 # One-line meanings sent to the model so it picks consistently.
 _USE_MEANINGS = {
     "Background or rationale": "sets the clinical scene or shows why the question matters",
@@ -135,7 +156,7 @@ def tag_papers(llm: LLMClient, papers: list[Paper]) -> list[TaggedPaper]:
             f"the pmids given. The reason says why the paper was flagged.\n\n{listing}"
         )
         try:
-            data = llm.complete_json(_TAG_SYSTEM, user)
+            data = llm.complete_json(_TAG_SYSTEM, user, schema=TAGS_SCHEMA)
             for tag in data.get("tags", []):
                 pmid = str(tag.get("pmid", "")).strip()
                 if pmid:

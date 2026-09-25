@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { getOrderForUser, getPricingState } from "@/lib/queries/guides";
 import {
   DELIVERY_PROMISE,
+  EXACT_REQUIREMENTS_DISCLAIMER,
   formatPounds,
   formatPriceLabel,
   traderInfo,
@@ -25,7 +26,9 @@ const PROFORMA_LABELS: [string, string][] = [
   ["grade", "Grade or role"],
   ["institution", "Institution"],
   ["publicationType", "Publication type"],
+  ["typeFlexibility", "Flexibility on review type"],
   ["topics", "Topic areas"],
+  ["topicFlexibility", "Flexibility on topic"],
   ["existingTitle", "Title in mind"],
   ["hoursPerWeek", "Hours per week"],
   ["timeline", "Timeline"],
@@ -187,6 +190,10 @@ export default async function GuideCheckoutPage({
               published, tell us within 30 days and we will refine the title,
               the angle and the workflow and issue you a modified guide at no
               cost.
+            </p>
+            <p className="mt-2">
+              <strong className="text-foreground">Your topic:</strong>{" "}
+              {EXACT_REQUIREMENTS_DISCLAIMER}
             </p>
           </div>
 

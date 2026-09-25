@@ -19,7 +19,9 @@ import {
   STATS_OPTIONS,
   SUPERVISOR_OPTIONS,
   TIMELINE_OPTIONS,
+  TOPIC_FLEXIBILITY_OPTIONS,
   TOPIC_MAX_CHARS,
+  TYPE_FLEXIBILITY_OPTIONS,
   YES_NO_OPTIONS,
 } from "@/lib/guides-meta";
 import {
@@ -57,6 +59,8 @@ export async function submitGuideProforma(formData: FormData) {
   const patientData = String(formData.get("patientData") ?? "");
   const nonEnglish = String(formData.get("nonEnglish") ?? "");
   const specialtyUndecided = formData.get("specialtyUndecided") === "on";
+  const topicFlexibility = String(formData.get("topicFlexibility") ?? "");
+  let typeFlexibility = String(formData.get("typeFlexibility") ?? "");
 
   const specialties = String(formData.get("specialties") ?? "")
     .split(",")
@@ -79,6 +83,13 @@ export async function submitGuideProforma(formData: FormData) {
     fail(`Topic areas are capped at ${TOPIC_MAX_CHARS} characters.`);
   if (!oneOf(publicationType, PUBLICATION_TYPES))
     fail("Please choose the type of publication you want.");
+  if (!oneOf(typeFlexibility, TYPE_FLEXIBILITY_OPTIONS))
+    fail("Please say how flexible you are on the type of review.");
+  // "Not sure" already asks us to choose, so the type is flexible by definition.
+  if (publicationType === "Not sure, recommend one for me")
+    typeFlexibility = TYPE_FLEXIBILITY_OPTIONS[1];
+  if (!oneOf(topicFlexibility, TOPIC_FLEXIBILITY_OPTIONS))
+    fail("Please say how flexible you are on the topic.");
   if (!oneOf(hoursPerWeek, HOURS_OPTIONS))
     fail("Please say how many hours you have per week.");
   if (!oneOf(timeline, TIMELINE_OPTIONS)) fail("Please choose a timeline.");
@@ -104,6 +115,8 @@ export async function submitGuideProforma(formData: FormData) {
     specialtyUndecided,
     topics,
     publicationType,
+    typeFlexibility,
+    topicFlexibility,
     existingTitle: String(formData.get("existingTitle") ?? "").trim() || null,
     hoursPerWeek,
     timeline,

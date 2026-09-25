@@ -26,6 +26,28 @@ export const PUBLICATION_TYPES = [
   "Not sure, recommend one for me",
 ] as const;
 
+// Guide request update (2026-09-25): we honour the review type and topic the
+// user asks for, and only move away from either as far as they say they are
+// flexible. Stored on the proforma; the pipeline reads them.
+export const TYPE_FLEXIBILITY_OPTIONS = [
+  "Only the type I chose",
+  "Flexible, another review type is fine",
+] as const;
+
+export const TOPIC_FLEXIBILITY_OPTIONS = [
+  "Only my stated topic",
+  "Flexible within my specialty",
+  "Fully flexible, any topic that suits my interests",
+] as const;
+
+// Shown on the request form, above the specialty and topic questions.
+export const FLEXIBILITY_ADVICE =
+  "Most specialty training programmes in the UK do not need your publication to be in a specific field. Please check your own programme's requirements before requesting a guide. Keeping your preferences flexible gives the best results, especially where your topic has already been well researched.";
+
+// Shown on the request form and in the checkout pre-contract information.
+export const EXACT_REQUIREMENTS_DISCLAIMER =
+  "We can never promise a guide on a topic that matches your exact requirements. If we cannot find a suitable question within your preferences, we will email you to check whether you are flexible on anything before we go further.";
+
 export const HOURS_OPTIONS = ["Under 3", "3 to 5", "5 to 10", "Over 10"] as const;
 
 export const TIMELINE_OPTIONS = [

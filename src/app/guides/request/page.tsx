@@ -4,6 +4,8 @@ import {
   COLLABORATOR_OPTIONS,
   DATABASE_OPTIONS,
   DELIVERY_PROMISE,
+  EXACT_REQUIREMENTS_DISCLAIMER,
+  FLEXIBILITY_ADVICE,
   GUIDE_GRADES,
   HOURS_OPTIONS,
   MAX_GUIDE_SPECIALTIES,
@@ -11,7 +13,9 @@ import {
   STATS_OPTIONS,
   SUPERVISOR_OPTIONS,
   TIMELINE_OPTIONS,
+  TOPIC_FLEXIBILITY_OPTIONS,
   TOPIC_MAX_CHARS,
+  TYPE_FLEXIBILITY_OPTIONS,
   YES_NO_OPTIONS,
 } from "@/lib/guides-meta";
 import { submitGuideProforma } from "@/app/guides/actions";
@@ -102,6 +106,10 @@ export default async function GuideRequestPage({
               </div>
             </div>
 
+            <div className="rounded-md border bg-secondary/50 px-4 py-3 text-sm leading-relaxed">
+              {FLEXIBILITY_ADVICE}
+            </div>
+
             <div className="grid gap-2">
               <Label htmlFor="specialties">
                 Specialty interests (up to {MAX_GUIDE_SPECIALTIES},
@@ -138,6 +146,19 @@ export default async function GuideRequestPage({
               </p>
             </div>
 
+            <div className="grid gap-2">
+              <Label htmlFor="topicFlexibility">
+                How flexible are you on the topic?
+              </Label>
+              <Select
+                id="topicFlexibility"
+                name="topicFlexibility"
+                required
+                placeholder="Choose"
+                options={toOptions(TOPIC_FLEXIBILITY_OPTIONS)}
+              />
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Label htmlFor="publicationType">
@@ -149,6 +170,18 @@ export default async function GuideRequestPage({
                   required
                   placeholder="Choose a type"
                   options={toOptions(PUBLICATION_TYPES)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="typeFlexibility">
+                  How flexible are you on the type of review?
+                </Label>
+                <Select
+                  id="typeFlexibility"
+                  name="typeFlexibility"
+                  required
+                  placeholder="Choose"
+                  options={toOptions(TYPE_FLEXIBILITY_OPTIONS)}
                 />
               </div>
               <div className="grid gap-2">
@@ -267,6 +300,10 @@ export default async function GuideRequestPage({
               </Label>
               <Textarea id="anythingElse" name="anythingElse" rows={3} />
             </div>
+
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {EXACT_REQUIREMENTS_DISCLAIMER}
+            </p>
 
             <Button type="submit" className="mt-2 self-start">
               Review and continue

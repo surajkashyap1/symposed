@@ -39,6 +39,9 @@ class Thresholds:
     active_trial_completion_months: int = 12    # reject if an active trial completes within N months
     candidate_titles_min: int = 8               # LLM generates this many candidate titles...
     candidate_titles_max: int = 12              # ...up to this many, across the 14 axes
+    candidate_min_axes: int = 6                 # a batch must span at least this many axes
+    candidate_max_per_axis: int = 2             # ...with no more than this many from one axis
+    max_candidate_batches: int = 3              # new batches while none pass, up to this many
 
     @classmethod
     def from_env(cls) -> "Thresholds":
@@ -49,6 +52,9 @@ class Thresholds:
             active_trial_completion_months=_get_int("ACTIVE_TRIAL_COMPLETION_MONTHS", 12),
             candidate_titles_min=_get_int("CANDIDATE_TITLES_MIN", 8),
             candidate_titles_max=_get_int("CANDIDATE_TITLES_MAX", 12),
+            candidate_min_axes=_get_int("CANDIDATE_MIN_AXES", 6),
+            candidate_max_per_axis=_get_int("CANDIDATE_MAX_PER_AXIS", 2),
+            max_candidate_batches=_get_int("MAX_CANDIDATE_BATCHES", 3),
         )
 
 

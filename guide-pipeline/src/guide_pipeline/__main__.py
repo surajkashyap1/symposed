@@ -105,19 +105,23 @@ def candidates(topic: str) -> int:
         trials = "?" if a.active_trials is None else f"{a.active_trials:,}"
         print(f"  [{tag}] {a.candidate.title}")
         print(
-            f"          axis={a.candidate.axis or '-'} · eligible={a.eligible_studies:,}"
+            f"          batch {a.batch} · axis={a.candidate.axis or '-'}"
+            f" · eligible={a.eligible_studies:,}"
             f" · recent SRs={a.recent_reviews:,} · active trials={trials}"
         )
         if a.gate.reasons:
             print(f"          rejected: {'; '.join(a.gate.reasons)}")
-    print()
+    print(f"\n  Batches generated: {result.batches}")
     if result.top is not None:
         print(f"  Top pick: {result.top.candidate.title}")
         print(f"            ({result.top.eligible_studies:,} eligible studies)")
         for note in result.top.manual_checks:
             print(f"            manual: {note}")
     else:
-        print("  No candidate passed the gates — try a broader or different topic.")
+        print(
+            f"  No candidate passed the gates in {result.batches} batch(es) — "
+            "try a broader or different topic."
+        )
     return 0
 
 

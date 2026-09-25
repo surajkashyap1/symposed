@@ -21,17 +21,24 @@ _TAG_BATCH = 10  # papers per LLM tagging call
 _ABSTRACT_CHARS = 600  # abstract chars sent to the model per paper
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 
-# A small controlled vocabulary so the guide groups cleanly (in this order),
-# instead of fragmenting into many one-off free-form labels.
+# The fixed suggested-use taxonomy from the build spec (section 6.3), in the order
+# the guide groups them. A suggested use is never an include/exclude decision.
 USE_CATEGORIES = (
-    "Primary evidence",
-    "Systematic review or meta-analysis",
-    "Background / context",
-    "Methods reference",
-    "Related but different population",
-    "Protocol or ongoing study",
-    "Other",
+    "Background or rationale",
+    "Methods justification",
+    "Comparable review for discussion",
+    "Potential included study",
+    "Excluded but contextually relevant",
 )
+
+# One-line meanings sent to the model so it picks consistently.
+_USE_MEANINGS = {
+    "Background or rationale": "sets the clinical scene or shows why the question matters",
+    "Methods justification": "supports a methodological choice (design, tool, outcome measure)",
+    "Comparable review for discussion": "an existing review to compare against in the discussion",
+    "Potential included study": "a primary study that might meet the review's eligibility criteria",
+    "Excluded but contextually relevant": "unlikely to meet eligibility but useful context",
+}
 
 _TAG_SYSTEM = (
     "You help a clinician triage papers for a review. You return ONLY valid JSON. "
@@ -42,14 +49,12 @@ _TAG_SYSTEM = (
 
 
 def _normalize_use(raw: str) -> str:
-    """Map a model-supplied use to the controlled vocabulary ('' stays '')."""
-    r = raw.strip()
-    if not r:
-        return ""
+    """Map a model-supplied use to the fixed taxonomy; anything else is ''."""
+    r = raw.strip().lower()
     for category in USE_CATEGORIES:
-        if r.lower() == category.lower():
+        if r == category.lower():
             return category
-    return "Other"
+    return ""  # off-taxonomy -> untagged, so a human sees it rather than a guess
 
 
 @dataclass(frozen=True)
@@ -122,11 +127,12 @@ def tag_papers(llm: LLMClient, papers: list[Paper]) -> list[TaggedPaper]:
             f'- pmid {p.pmid}: "{p.title}" — {p.abstract[:_ABSTRACT_CHARS]}'
             for p in batch
         )
+        meanings = "\n".join(f"- {c}: {m}" for c, m in _USE_MEANINGS.items())
         user = (
             "Suggest a use for each paper below. For suggested_use choose EXACTLY one "
-            f"of: {', '.join(USE_CATEGORIES)}. Return JSON "
+            f"of these (name spelled exactly):\n{meanings}\n\nReturn JSON "
             '{"tags":[{"pmid":str,"suggested_use":str,"reason":str}]} using EXACTLY '
-            f"the pmids given.\n\n{listing}"
+            f"the pmids given. The reason says why the paper was flagged.\n\n{listing}"
         )
         try:
             data = llm.complete_json(_TAG_SYSTEM, user)

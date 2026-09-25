@@ -13,14 +13,17 @@ only proposes candidate review questions and search terms.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from typing import Any, Optional, Protocol
+import re
+import time
+from dataclasses import dataclass, field
+from typing import Any, Callable, Optional, Protocol
 
 import httpx
 
 from .settings import Settings
 
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+_TRY_AGAIN_RE = re.compile(r"try again in ([0-9.]+)s")
 
 
 class LLMError(RuntimeError):
@@ -43,11 +46,53 @@ class GroqClient:
     base_url: str = GROQ_BASE_URL
     timeout: float = 60.0
     client: Optional[httpx.Client] = None
+    # Groq's JSON mode intermittently rejects a generation (400
+    # json_validate_failed) on long prompts; a fresh sample usually succeeds.
+    json_retries: int = 2
+    # The free tier has a tokens-per-minute cap; a 429 says how long to wait.
+    rate_limit_retries: int = 2
+    max_rate_limit_wait: float = 65.0
+    sleep: Callable[[float], None] = field(default=time.sleep, repr=False)
 
     def complete_json(self, system: str, user: str) -> dict[str, Any]:
+        json_failures = rate_limits = 0
+        while True:
+            resp = self._post(system, user)
+            if (
+                resp.status_code == 400
+                and "json_validate_failed" in resp.text
+                and json_failures < self.json_retries
+            ):
+                json_failures += 1
+                continue
+            if resp.status_code == 429 and rate_limits < self.rate_limit_retries:
+                wait = self._rate_limit_wait(resp)
+                if wait is not None:
+                    rate_limits += 1
+                    self.sleep(wait)
+                    continue
+            return self._parse(resp)
+
+    def _rate_limit_wait(self, resp: httpx.Response) -> Optional[float]:
+        """Seconds to wait from Retry-After or the error text, if within the cap."""
+        wait: Optional[float] = None
+        header = resp.headers.get("retry-after")
+        if header:
+            try:
+                wait = float(header)
+            except ValueError:
+                wait = None
+        if wait is None:
+            match = _TRY_AGAIN_RE.search(resp.text)
+            wait = float(match.group(1)) if match else None
+        if wait is None or wait > self.max_rate_limit_wait:
+            return None
+        return wait + 1.0  # small margin past the window
+
+    def _post(self, system: str, user: str) -> httpx.Response:
         client = self.client or httpx.Client(timeout=self.timeout)
         try:
-            resp = client.post(
+            return client.post(
                 f"{self.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 json={
@@ -64,6 +109,7 @@ class GroqClient:
             if self.client is None:
                 client.close()
 
+    def _parse(self, resp: httpx.Response) -> dict[str, Any]:
         if resp.status_code != 200:
             raise LLMError(f"Groq HTTP {resp.status_code}: {resp.text[:300]}")
         try:

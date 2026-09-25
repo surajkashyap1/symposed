@@ -19,8 +19,8 @@ scheduler yet — those come back later, one at a time.
 - **Step 2 — Concept mapping & landscape**: proforma topic → real MeSH terms via
   E-utilities; four counts (total literature, publication years, existing
   systematic reviews, existing guidelines). ✅ (`python -m guide_pipeline landscape "<topic>"`)
-- **Step 3 — Candidates & gates**: LLM makes 8–12 candidate titles across distinct
-  axes; count-only queries; apply gates; rank survivors. ✅
+- **Step 3 — Candidates & gates**: LLM makes 8–12 candidate titles across the
+  spec's 14 gap axes; count-only queries; apply gates; rank survivors. ✅
   (`python -m guide_pipeline candidates "<topic>"`)
 - **Step 4 — Deep retrieval**: chosen title only — full records + abstracts,
   dedupe (DOI → PMID → title+year), tag each paper with a suggested use. ✅
@@ -28,6 +28,25 @@ scheduler yet — those come back later, one at a time.
 - **Step 5 — The guide**: draft the Word doc from retrieved records only,
   including the date the searches were run. ✅
   (`python -m guide_pipeline guide "<title>" -- "<pubmed query>"`)
+
+## Aligning with the full build spec
+
+v1 above was the cut-down slice. We are now aligning it with the full
+*Symposed Pipeline Build Spec v1.1*, still one step per session:
+
+- **A1 — Stage 2 generation + taxonomy** ✅: the 14 gap axes (weighted to 3/4/12/13),
+  ≥6 axes and ≤2 per axis enforced in code (with a top-up call for unused axes),
+  two-person rule, new batch with rejected titles as negative context when none
+  pass (§1.2), and the fixed 5-category suggested-use taxonomy (§6.3).
+- **A2 — PROSPERO adapter**: one adapter class, mirror + fuzzy match, delta pull,
+  manual CSV upload, staleness guard, check date recorded (§3).
+- **A3 — Stage 3/4 gates**: three separate count queries per candidate; the full
+  six gates (registered protocol, imminent trials, heterogeneity).
+- **A4 — Stage 4b scoring + Stage 5 re-score + 5b tie break** (with override log).
+- **A5 — Database schema** (§5 tables, unique normalised-title index) + Sheets sync.
+- **A6 — More sources**: OpenAlex, Semantic Scholar, CORE, WHO ICTRP, Crossref.
+- **A7 — Full 26-section guide** with the verbatim statements (§6).
+- **A8 — Stage 6 verification screen + weekly batch scheduler.**
 
 Models (spec): Claude Sonnet 5 for titles + drafting, Claude Haiku 4.5 for
 tagging. We are trialling **Groq's free model first** and will switch to Claude if

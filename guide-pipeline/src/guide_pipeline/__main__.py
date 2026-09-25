@@ -6,7 +6,8 @@ import sys
 
 from datetime import datetime, timezone
 
-from .candidates import screen_candidates
+from .candidates import TOPIC_ANY, TOPIC_EXACT, TOPIC_SPECIALTY, RequestPreferences, screen_candidates
+from .gates import LIGHTER_TYPES, SYSTEMATIC
 from .guide import build_guide
 from .landscape import assess_landscape
 from .llm import LLMError, build_llm
@@ -93,8 +94,50 @@ def landscape(topic: str) -> int:
     return 0
 
 
-def candidates(topic: str) -> int:
+_CANDIDATES_USAGE = (
+    'Usage: python -m guide_pipeline candidates "<topic>" [--type "narrative review"] '
+    "[--type-flexible] [--topic exact|specialty|any] [--specialty NAME ...] "
+    "[--collaborators N]"
+)
+
+
+def parse_candidate_args(args: list[str]) -> tuple[str, RequestPreferences]:
+    """The topic plus the request preferences a proforma would supply."""
+    words: list[str] = []
+    pub_type, type_flexible, topic_flex = SYSTEMATIC, False, TOPIC_EXACT
+    specialties: list[str] = []
+    collaborators = 2
+    it = iter(args)
+    for arg in it:
+        if arg == "--type":
+            pub_type = next(it, SYSTEMATIC).lower()
+            if pub_type not in (SYSTEMATIC, *LIGHTER_TYPES):
+                raise ValueError(f"unknown review type: {pub_type}")
+        elif arg == "--type-flexible":
+            type_flexible = True
+        elif arg == "--topic":
+            topic_flex = next(it, TOPIC_EXACT)
+            if topic_flex not in (TOPIC_EXACT, TOPIC_SPECIALTY, TOPIC_ANY):
+                raise ValueError(f"--topic must be exact, specialty or any, not {topic_flex}")
+        elif arg == "--specialty":
+            specialties.append(next(it, ""))
+        elif arg == "--collaborators":
+            collaborators = int(next(it, "2"))
+        else:
+            words.append(arg)
+    prefs = RequestPreferences(
+        publication_type=pub_type,
+        type_flexible=type_flexible,
+        topic_flexibility=topic_flex,
+        specialties=tuple(s for s in specialties if s),
+        collaborators=collaborators,
+    )
+    return " ".join(words), prefs
+
+
+def candidates(topic: str, prefs: RequestPreferences | None = None) -> int:
     """Stages 2-4 live: generate candidates, triage + gate each, rank survivors."""
+    prefs = prefs or RequestPreferences()
     settings = Settings.load()
     if settings.llm_provider == "groq" and not settings.groq_api_key:
         print("Set GROQ_API_KEY in .env first (LLM_PROVIDER=groq).")
@@ -112,6 +155,7 @@ def candidates(topic: str) -> int:
             topic,
             settings.thresholds,
             mirror_max_age_days=settings.prospero_max_age_days,
+            preferences=prefs,
         )
     except StaleMirrorError as exc:
         print(f"  REFUSING TO RUN: {exc}")
@@ -135,16 +179,22 @@ def candidates(topic: str) -> int:
         for reason in a.verdict.reasons:
             print(f"              - {reason}")
     print(f"\n  Batches generated: {result.batches}")
+    print(
+        f"  Request: {prefs.publication_type}"
+        f" ({'type flexible' if prefs.type_flexible else 'type strict'}),"
+        f" topic {prefs.topic_flexibility}"
+    )
+    print(f"  Outcome: {result.outcome.upper()}")
     if result.top is not None:
-        print(f"  Top pick: {result.top.candidate.title}")
+        kind = (
+            "a scoping or narrative review"
+            if result.outcome == "found_other_type"
+            else prefs.publication_type
+        )
+        print(f"  Top pick ({kind}): {result.top.candidate.title}")
         print(f"            ({result.top.counts.eligible_studies:,} eligible studies)")
     else:
-        print(
-            f"  No candidate passed the gates in {result.batches} batch(es) — "
-            "try a broader or different topic."
-        )
-    if result.downgraded:
-        print(f"  {len(result.downgraded)} candidate(s) could suit a scoping or narrative review.")
+        print(f"  Email the user before going further: {result.contact_reason}.")
     return 0
 
 
@@ -327,10 +377,15 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         return landscape(" ".join(argv[1:]))
     if argv and argv[0] == "candidates":
-        if len(argv) < 2:
-            print('Usage: python -m guide_pipeline candidates "<topic>"')
+        try:
+            topic, prefs = parse_candidate_args(argv[1:])
+        except ValueError as exc:
+            print(f"  {exc}\n{_CANDIDATES_USAGE}")
             return 2
-        return candidates(" ".join(argv[1:]))
+        if not topic:
+            print(_CANDIDATES_USAGE)
+            return 2
+        return candidates(topic, prefs)
     if argv and argv[0] == "retrieve":
         if len(argv) < 2:
             print('Usage: python -m guide_pipeline retrieve "<pubmed query>"')

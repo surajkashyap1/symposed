@@ -8,6 +8,7 @@ from guide_pipeline.candidates import (
     HIGH_YIELD_AXES,
     Candidate,
     CandidateAssessment,
+    RequestPreferences,
     assess_candidate,
     generate_candidates,
     plain_terms,
@@ -374,3 +375,66 @@ def test_prompt_requires_axes_outside_high_yield():
     llm = FakeLLM(six_axis_batch())
     generate_candidates(llm, "sepsis", min_axes=6)
     assert "At least 2 of the axes you use must be OUTSIDE" in llm.calls[0][1]
+
+
+# -- request preferences: review type and topic flexibility -------------------
+def test_strict_type_does_not_offer_a_downgrade(tmp_path):
+    th = Thresholds(min_eligible_studies=8, scoping_min_studies=5, max_candidate_batches=2)
+    llm = SeqLLM(six_axis_batch("A"), six_axis_batch("B"))
+    result = screen(tmp_path, llm, routed_handler(eligible=6), th)
+    assert result.batches == 2  # kept trying other axes instead of settling
+    assert result.outcome == "needs_contact" and result.top is None
+    assert "type" in result.contact_reason and "scoping" in result.contact_reason
+
+
+def test_flexible_type_offers_the_best_downgrade_after_all_batches(tmp_path):
+    th = Thresholds(min_eligible_studies=8, scoping_min_studies=5, max_candidate_batches=2)
+    pubmed, ct = make_sources(routed_handler(eligible=6), tmp_path)
+    result = screen_candidates(
+        SeqLLM(six_axis_batch("A"), six_axis_batch("B")), pubmed, ct, make_mirror(tmp_path),
+        "sepsis", th, today=TODAY, preferences=RequestPreferences(type_flexible=True),
+    )
+    assert result.batches == 2  # a systematic review was still tried first
+    assert result.outcome == "found_other_type"
+    assert result.top is not None and result.top.verdict.outcome == "downgrade"
+
+
+def test_nothing_found_asks_about_topic_when_type_is_already_flexible(tmp_path):
+    th = Thresholds(min_eligible_studies=8, max_candidate_batches=1)
+    pubmed, ct = make_sources(routed_handler(eligible=0), tmp_path)
+    result = screen_candidates(
+        FakeLLM(six_axis_batch()), pubmed, ct, make_mirror(tmp_path), "sepsis", th,
+        today=TODAY, preferences=RequestPreferences(type_flexible=True),
+    )
+    assert result.outcome == "needs_contact"
+    assert "topic" in result.contact_reason and "type" not in result.contact_reason
+
+
+def test_first_batch_stays_on_topic_later_batches_broaden_per_flexibility():
+    exact = RequestPreferences(topic_flexibility="exact")
+    within = RequestPreferences(topic_flexibility="specialty", specialties=("Cardiology",))
+    first = FakeLLM(six_axis_batch())
+    generate_candidates(first, "sepsis", preferences=within, batch=1)
+    assert "Stay strictly within the stated topic" in first.calls[0][1]
+    later = FakeLLM(six_axis_batch())
+    generate_candidates(later, "sepsis", preferences=within, batch=2)
+    assert "within Cardiology" in later.calls[0][1]
+    strict_later = FakeLLM(six_axis_batch())
+    generate_candidates(strict_later, "sepsis", preferences=exact, batch=3)
+    assert "Stay strictly within the stated topic" in strict_later.calls[0][1]
+
+
+def test_later_batches_are_told_which_axes_failed(tmp_path):
+    first = six_axis_batch("A")
+    second = six_axis_batch("B")
+    second["candidates"][2]["pubmed_query"] = "winner"
+    llm = SeqLLM(first, second)
+    screen(tmp_path, llm, eligible_by_query_handler("winner"))
+    prompt = llm.calls[1][1]
+    assert "Axes already tried without success" in prompt and "Discordance" in prompt
+
+
+def test_publication_type_is_named_in_the_prompt():
+    llm = FakeLLM(six_axis_batch())
+    generate_candidates(llm, "sepsis", preferences=RequestPreferences(publication_type="narrative review"))
+    assert "narrative review" in llm.calls[0][1]

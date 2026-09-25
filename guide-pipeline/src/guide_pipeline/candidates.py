@@ -123,6 +123,29 @@ class Candidate:
     rationale: str = ""
 
 
+TOPIC_EXACT, TOPIC_SPECIALTY, TOPIC_ANY = "exact", "specialty", "any"
+
+
+@dataclass(frozen=True)
+class RequestPreferences:
+    """What the user asked for on the proforma, and how flexible they are.
+
+    A strict review type is never silently swapped: a candidate that would only
+    suit a lighter review type is offered only when `type_flexible`. The first
+    batch always stays on the stated topic; later batches may broaden only as
+    far as `topic_flexibility` allows.
+    """
+
+    publication_type: str = SYSTEMATIC
+    type_flexible: bool = False
+    topic_flexibility: str = TOPIC_EXACT  # exact | specialty | any
+    specialties: tuple[str, ...] = ()
+    collaborators: int = 2
+
+
+FOUND, FOUND_OTHER_TYPE, NEEDS_CONTACT = "found", "found_other_type", "needs_contact"
+
+
 @dataclass(frozen=True)
 class SearchRun:
     """One query sent during triage (spec: record every search run)."""
@@ -151,6 +174,8 @@ class ScreenResult:
     batches: int = 1  # how many batches were generated
     # too few studies for a systematic review, but may suit a scoping review
     downgraded: list[CandidateAssessment] = field(default_factory=list)
+    outcome: str = FOUND  # found | found_other_type | needs_contact
+    contact_reason: str = ""  # for needs_contact: what to ask the user
 
 
 def normalise_title(title: str) -> str:
@@ -171,6 +196,9 @@ def _build_prompt(
     min_axes: int,
     max_per_axis: int,
     avoid: tuple[str, ...],
+    preferences: RequestPreferences,
+    batch: int,
+    failed_axes: tuple[str, ...],
 ) -> str:
     context = ""
     if landscape is not None:
@@ -188,6 +216,13 @@ def _build_prompt(
         if others > 0
         else ""
     )
+    scope = _scope_instruction(preferences, batch)
+    tried = ""
+    if failed_axes:
+        tried = (
+            f"\n\nAxes already tried without success: {', '.join(failed_axes)}. "
+            "Prefer the other axes this time."
+        )
     avoid_block = ""
     if avoid:
         listed = "\n".join(f"- {t}" for t in avoid)
@@ -197,6 +232,8 @@ def _build_prompt(
         )
     return (
         f'Topic: "{topic}".{context}\n\n'
+        f"The user wants a {preferences.publication_type}: every question must suit "
+        f"that type of review. {scope}\n\n"
         f"Propose between {min_n} and {max_n} candidate review titles. Each must be a "
         "specific, answerable review question that fills a GAP of one of these kinds "
         f"(its axis):\n{axes}\n\n"
@@ -206,7 +243,7 @@ def _build_prompt(
         f"reviewer — without excluding the others.{mix} Every question must be workable "
         "by at least two people (dual independent screening). The axis value must be "
         "one of the axis names above, spelled exactly."
-        f"{avoid_block}\n\n"
+        f"{tried}{avoid_block}\n\n"
         'Return JSON of the form {"candidates": [{"title": str, "axis": str, '
         '"pubmed_query": str, "trials_query": str, "rationale": str}]}. The '
         "pubmed_query is PubMed syntax for the question's CONCEPTS only (population or "
@@ -215,6 +252,23 @@ def _build_prompt(
         "add NO publication-type, study-design or date filters. "
         "The trials_query is plain keywords for ClinicalTrials.gov — NO field tags, "
         "quotes or boolean operators. The rationale says what gap the question fills."
+    )
+
+
+def _scope_instruction(preferences: RequestPreferences, batch: int) -> str:
+    """How far from the stated topic this batch may go."""
+    exact = "Stay strictly within the stated topic."
+    if batch == 1 or preferences.topic_flexibility == TOPIC_EXACT:
+        return exact
+    if preferences.topic_flexibility == TOPIC_SPECIALTY:
+        where = " or ".join(preferences.specialties) or "the same specialty"
+        return (
+            "The stated topic has been hard to fill. You may move to adjacent topics "
+            f"within {where}, but stay in that specialty."
+        )
+    return (
+        "The stated topic has been hard to fill. You may move to related topics that "
+        "suit the user's interests."
     )
 
 
@@ -303,6 +357,9 @@ def generate_candidates(
     max_per_axis: int = 2,
     avoid: tuple[str, ...] | list[str] = (),
     top_ups: int = 2,
+    preferences: Optional[RequestPreferences] = None,
+    batch: int = 1,
+    failed_axes: tuple[str, ...] = (),
 ) -> list[Candidate]:
     """Ask the LLM for one batch of candidates spread across the spec's axes.
 
@@ -314,7 +371,11 @@ def generate_candidates(
     """
     avoid = tuple(avoid)
     avoid_keys = {normalise_title(t) for t in avoid}
-    user = _build_prompt(topic, landscape, min_n, max_n, min_axes, max_per_axis, avoid)
+    preferences = preferences or RequestPreferences()
+    user = _build_prompt(
+        topic, landscape, min_n, max_n, min_axes, max_per_axis, avoid,
+        preferences, batch, failed_axes,
+    )
     candidates = _parse_candidates(
         llm.complete_json(_SYSTEM_PROMPT, user), max_per_axis, avoid_keys
     )
@@ -443,6 +504,27 @@ def rank_survivors(
     return sorted(survivors, key=lambda a: a.counts.eligible_studies, reverse=True)
 
 
+def _contact_reason(
+    preferences: RequestPreferences, downgraded: list[CandidateAssessment]
+) -> str:
+    """What to ask the user when nothing fits their stated requirements."""
+    asks = []
+    if downgraded and not preferences.type_flexible:
+        asks.append(
+            f"no {preferences.publication_type} question passed, but "
+            f"{len(downgraded)} candidate(s) could work as a scoping or narrative "
+            "review; ask whether they are flexible on review type"
+        )
+    if preferences.topic_flexibility != TOPIC_ANY:
+        asks.append(
+            "ask whether they are flexible on topic "
+            f"(currently: {preferences.topic_flexibility})"
+        )
+    if not asks:
+        return "no suitable question found even with full flexibility"
+    return "; ".join(asks)
+
+
 def screen_candidates(
     llm: LLMClient,
     pubmed: PubMedClient,
@@ -453,8 +535,7 @@ def screen_candidates(
     *,
     landscape: Optional[Landscape] = None,
     mirror_max_age_days: int = 10,
-    publication_type: str = SYSTEMATIC,
-    collaborators: int = 2,
+    preferences: Optional[RequestPreferences] = None,
     today: Optional[date] = None,
 ) -> ScreenResult:
     """End to end: generate, triage + gate, rank — batch by batch (spec §1.2).
@@ -462,14 +543,18 @@ def screen_candidates(
     Refuses to start on a stale PROSPERO mirror, before any API is called.
     Every candidate in a batch is evaluated (counts are cheap). If none passes,
     a new batch is generated with every rejected title passed back as negative
-    context; once any candidate passes, no further batches are generated.
+    context and the failed axes named; once any candidate passes, no further
+    batches are generated. The requested review type is honoured: a lighter
+    type is offered only if the user is flexible, and only after every batch.
     """
+    prefs = preferences or RequestPreferences()
     mirror.ensure_fresh(max_age_days=mirror_max_age_days, today=today)
     assessments: list[CandidateAssessment] = []
     batches = 0
     while batches < thresholds.max_candidate_batches:
         batches += 1
         rejected = tuple(a.candidate.title for a in assessments if not a.verdict.passed)
+        failed_axes = tuple(dict.fromkeys(a.candidate.axis for a in assessments))
         candidates = generate_candidates(
             llm,
             topic,
@@ -479,6 +564,9 @@ def screen_candidates(
             min_axes=thresholds.candidate_min_axes,
             max_per_axis=thresholds.candidate_max_per_axis,
             avoid=rejected,
+            preferences=prefs,
+            batch=batches,
+            failed_axes=failed_axes,
         )
         batch = [
             assess_candidate(
@@ -488,8 +576,8 @@ def screen_candidates(
                 c,
                 thresholds,
                 mirror_max_age_days=mirror_max_age_days,
-                publication_type=publication_type,
-                collaborators=collaborators,
+                publication_type=prefs.publication_type,
+                collaborators=prefs.collaborators,
                 today=today,
                 batch=batches,
             )
@@ -500,10 +588,23 @@ def screen_candidates(
             break
 
     survivors = rank_survivors(assessments)
+    downgraded = sorted(
+        (a for a in assessments if a.verdict.outcome == DOWNGRADE),
+        key=lambda a: a.counts.eligible_studies,
+        reverse=True,
+    )
+    if survivors:
+        outcome, top, reason = FOUND, survivors[0], ""
+    elif downgraded and prefs.type_flexible:
+        outcome, top, reason = FOUND_OTHER_TYPE, downgraded[0], ""
+    else:
+        outcome, top, reason = NEEDS_CONTACT, None, _contact_reason(prefs, downgraded)
     return ScreenResult(
         assessments=assessments,
         survivors=survivors,
-        top=survivors[0] if survivors else None,
+        top=top,
         batches=batches,
-        downgraded=[a for a in assessments if a.verdict.outcome == DOWNGRADE],
+        downgraded=downgraded,
+        outcome=outcome,
+        contact_reason=reason,
     )

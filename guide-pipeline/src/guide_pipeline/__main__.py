@@ -10,6 +10,16 @@ from .candidates import screen_candidates
 from .guide import build_guide
 from .landscape import assess_landscape
 from .llm import LLMError, build_llm
+from .prospero import (
+    EndpointSource,
+    ProsperoError,
+    ProsperoMirror,
+    StaleMirrorError,
+    check_title,
+    delta_refresh,
+    full_harvest,
+    import_export_file,
+)
 from .retrieval import retrieve
 from .settings import Settings
 from .sources import build_sources
@@ -186,6 +196,111 @@ def guide_cmd(title: str, query: str) -> int:
     return 0
 
 
+_PROSPERO_USAGE = """Usage: python -m guide_pipeline prospero <command>
+  status              mirror size, coverage and freshness
+  harvest             one-off full download of the register (slow; run once)
+  refresh             pull registrations since the last refresh (weekly)
+  import <file>       merge an export downloaded by hand (RIS or CSV)
+  check "<title>"     fuzzy-check a title against the mirror"""
+
+
+def prospero_cmd(args: list[str]) -> int:
+    """PROSPERO mirror admin (spec section 3)."""
+    if not args:
+        print(_PROSPERO_USAGE)
+        return 2
+    settings = Settings.load()
+    mirror = ProsperoMirror(settings.prospero_db)
+    command, rest = args[0], args[1:]
+
+    def source() -> EndpointSource:
+        agent = "symposed-guide-pipeline"
+        if settings.ncbi_email:
+            agent += f" ({settings.ncbi_email})"
+        return EndpointSource(min_interval=settings.prospero_min_interval, user_agent=agent)
+
+    def progress(line: str) -> None:
+        print(f"  {line}", flush=True)
+
+    try:
+        if command == "status":
+            info, last = mirror.coverage(), mirror.last_refresh()
+            print(f"  Mirror: {settings.prospero_db}")
+            print(f"  Records: {mirror.record_count():,}")
+            if last is None:
+                print("  Never refreshed — run `prospero harvest`.")
+                return 1
+            print(f"  Last refresh: {last.refreshed_at:%Y-%m-%d %H:%M} UTC ({last.mode})")
+            print(f"  Covers registrations to: {info.covered_to if info else 'unknown'}")
+            try:
+                mirror.ensure_fresh(max_age_days=settings.prospero_max_age_days)
+                print(f"  Fresh (limit {settings.prospero_max_age_days} days).")
+            except StaleMirrorError as exc:
+                print(f"  STALE: {exc}")
+                return 1
+            return 0
+        unresolved: list[str] = []
+        withdrawn: list[str] = []
+        if command == "harvest":
+            print("Full PROSPERO harvest — one-off, spaced-out requests; this takes a while.\n")
+            src = source()
+            summary = full_harvest(src, mirror, progress=progress)
+            unresolved, withdrawn = src.unresolved, src.withdrawn
+        elif command == "refresh":
+            print("PROSPERO delta refresh\n")
+            src = source()
+            summary = delta_refresh(src, mirror, progress=progress)
+            unresolved, withdrawn = src.unresolved, src.withdrawn
+        elif command == "import" and rest:
+            summary = import_export_file(" ".join(rest), mirror)
+        elif command == "check" and rest:
+            title = " ".join(rest)
+            th = settings.thresholds
+            result = check_title(
+                mirror,
+                title,
+                max_age_days=settings.prospero_max_age_days,
+                reject_threshold=th.prospero_reject_similarity,
+                review_threshold=th.prospero_review_similarity,
+            )
+            print(f'PROSPERO check: "{title}"')
+            print(f"  Matched on: {result.search_terms}")
+            print(
+                f"  Checked {result.checked_on} against the mirror "
+                f"(registrations to {result.mirror_covered_to})"
+            )
+            print(f"  Verdict: {result.verdict.upper()}")
+            for m in result.matches:
+                print(f"    {m.score:.2f}  {m.registration_id}  {m.title}")
+                print(f"          {m.url}")
+            return 0
+        else:
+            print(_PROSPERO_USAGE)
+            return 2
+    except StaleMirrorError as exc:
+        print(f"  REFUSING TO RUN: {exc}")
+        return 1
+    except ProsperoError as exc:
+        print(f"  PROSPERO error: {exc}")
+        return 1
+    finally:
+        mirror.close()
+
+    print(
+        f"\n  Done: +{summary.added:,} new, {summary.updated:,} updated, "
+        f"{summary.windows} export(s). Mirror now holds {ProsperoMirror(settings.prospero_db).record_count():,} "
+        f"records, current to {summary.covered_to}."
+    )
+    if withdrawn:
+        print(f"  {len(withdrawn)} withdrawn protocol(s) skipped (no public title).")
+    if unresolved:
+        print(
+            f"  {len(unresolved)} registration(s) had no retrievable title and are NOT "
+            f"in the mirror: {', '.join(unresolved)}"
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "counts":
@@ -208,6 +323,8 @@ def main(argv: list[str] | None = None) -> int:
             print('Usage: python -m guide_pipeline retrieve "<pubmed query>"')
             return 2
         return retrieve_cmd(" ".join(argv[1:]))
+    if argv and argv[0] == "prospero":
+        return prospero_cmd(argv[1:])
     if argv and argv[0] == "guide":
         rest = argv[1:]
         if not rest:

@@ -11,3 +11,6 @@ dist/
 # per-request outputs are local artefacts, not tracked
 output/*
 !output/.gitkeep
+
+# the PROSPERO mirror is a local database, rebuilt by `prospero harvest`
+data/

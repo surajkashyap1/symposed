@@ -38,8 +38,10 @@ v1 above was the cut-down slice. We are now aligning it with the full
   ≥6 axes and ≤2 per axis enforced in code (with a top-up call for unused axes),
   two-person rule, new batch with rejected titles as negative context when none
   pass (§1.2), and the fixed 5-category suggested-use taxonomy (§6.3).
-- **A2 — PROSPERO adapter**: one adapter class, mirror + fuzzy match, delta pull,
-  manual CSV upload, staleness guard, check date recorded (§3).
+- **A2 — PROSPERO adapter** ✅: local SQLite mirror (FTS5 shortlist + trigram
+  similarity), full harvest, weekly delta, manual export import, staleness guard,
+  per-check record of dates + search terms (§3). All acquisition is in
+  `prospero/adapter.py` — a proper CRD feed replaces that one file.
 - **A3 — Stage 3/4 gates**: three separate count queries per candidate; the full
   six gates (registered protocol, imminent trials, heterogeneity).
 - **A4 — Stage 4b scoring + Stage 5 re-score + 5b tie break** (with override log).
@@ -51,6 +53,36 @@ v1 above was the cut-down slice. We are now aligning it with the full
 Models (spec): Claude Sonnet 5 for titles + drafting, Claude Haiku 4.5 for
 tagging. We are trialling **Groq's free model first** and will switch to Claude if
 quality is too low — the LLM layer is provider-agnostic.
+
+## PROSPERO mirror
+
+PROSPERO has no public API. The mirror is filled from the undocumented endpoint
+behind its search page (the same call the web UI makes), in exports of up to
+10,000 records, spaced 3 s apart. CRD have been asked for a proper feed or
+permission; until then, `import` is the manual fallback and merges identically.
+
+```bash
+python -m guide_pipeline prospero harvest          # once, at setup (~500k records, ~1 h)
+python -m guide_pipeline prospero refresh          # weekly, before the batch (Friday)
+python -m guide_pipeline prospero import export.txt  # manual fallback: the UI's download file
+python -m guide_pipeline prospero status           # size, coverage, fresh or STALE
+python -m guide_pipeline prospero check "<title>"  # fuzzy match: REGISTERED / REVIEW / CLEAR
+```
+
+Checks refuse to run if the mirror covers registrations more than
+`PROSPERO_MAX_AGE_DAYS` (10) old.
+
+Matching is lexical (word shortlist + trigram similarity). Calibrated on the full
+register: light rewordings score ~0.80 and auto-reject (>= 0.75); heavier
+rewordings and close-but-different questions both land ~0.55-0.70, so everything
+>= 0.45 is surfaced as REVIEW for a human rather than auto-decided. Synonym-heavy
+duplicates ("paediatric ICU" for "critically ill children") can score below 0.45
+— which is why the human's live PROSPERO check on the shipped title stays.
+
+Harvest quirks handled: withdrawn protocols have no public title and are skipped
+(~145); one bulk-migration day (2020-04-28, 10,676 records) exceeds the export cap
+and is split by accession-number prefix. The public export has titles, IDs and dates
+only — status, condition and outcomes stay empty until a proper feed exists.
 
 ## Setup
 

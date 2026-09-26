@@ -53,6 +53,7 @@ class Thresholds:
     # different close questions overlap at ~0.55-0.70; different questions on
     # the same topic ~0.40-0.50. So only obvious rewordings auto-reject; the
     # overlap band goes to a human.
+    heterogeneity_max_outcomes: int = 5         # flag above this many distinct primary outcomes
     prospero_reject_similarity: float = 0.75    # a registered title this similar rejects
     prospero_review_similarity: float = 0.45    # ...this similar is surfaced for human review
 
@@ -69,6 +70,7 @@ class Thresholds:
             candidate_min_axes=_get_int("CANDIDATE_MIN_AXES", 6),
             candidate_max_per_axis=_get_int("CANDIDATE_MAX_PER_AXIS", 2),
             max_candidate_batches=_get_int("MAX_CANDIDATE_BATCHES", 3),
+            heterogeneity_max_outcomes=_get_int("HETEROGENEITY_MAX_OUTCOMES", 5),
             prospero_reject_similarity=_get_float("PROSPERO_REJECT_SIMILARITY", 0.75),
             prospero_review_similarity=_get_float("PROSPERO_REVIEW_SIMILARITY", 0.45),
         )
@@ -89,6 +91,9 @@ class Settings:
     llm_temperature: float = 0.4
     # step 2 landscape: how many recent years of the publication trend to fetch
     landscape_years: int = 10
+    # screening (Stage 5 v2)
+    llm_concurrency: int = 4            # papers screened in parallel
+    fulltext_max_chars: int = 60_000    # cap on open-access full text per paper
     # PROSPERO mirror (spec section 3)
     prospero_db: Path = Path("data/prospero.sqlite")
     prospero_max_age_days: int = 10     # refuse to run on a mirror older than this
@@ -110,6 +115,8 @@ class Settings:
             anthropic_model=_get("ANTHROPIC_MODEL", "claude-sonnet-5") or "claude-sonnet-5",
             llm_temperature=float(_get("LLM_TEMPERATURE", "0.4") or "0.4"),
             landscape_years=_get_int("LANDSCAPE_YEARS", 10),
+            llm_concurrency=_get_int("LLM_CONCURRENCY", 4),
+            fulltext_max_chars=_get_int("FULLTEXT_MAX_CHARS", 60_000),
             prospero_db=Path(_get("PROSPERO_DB", "data/prospero.sqlite") or "data/prospero.sqlite"),
             prospero_max_age_days=_get_int("PROSPERO_MAX_AGE_DAYS", 10),
             prospero_min_interval=_get_float("PROSPERO_MIN_INTERVAL", 3.0),

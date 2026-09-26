@@ -255,3 +255,22 @@ def test_groq_does_not_wait_beyond_cap():
     with pytest.raises(LLMError):
         _groq_sleeping(handler, sleeps).complete_json("s", "u")
     assert sleeps == []
+
+
+def test_anthropic_cache_system_marks_the_system_block():
+    fake = FakeAnthropic(reply('{"a": 1}'))
+    AnthropicClient(api_key="k", client=fake).complete_json("criteria...", "paper", cache_system=True)
+    assert fake.calls[0]["system"] == [
+        {"type": "text", "text": "criteria...", "cache_control": {"type": "ephemeral"}}
+    ]
+
+
+def test_usage_meter_is_thread_safe():
+    from concurrent.futures import ThreadPoolExecutor
+
+    meter = UsageMeter()
+    usage = SimpleNamespace(input_tokens=1, output_tokens=1,
+                            cache_creation_input_tokens=0, cache_read_input_tokens=0)
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(lambda _: meter.record("claude-sonnet-5", "t", usage), range(400)))
+    assert meter.calls == 400 and meter.input_tokens == 400

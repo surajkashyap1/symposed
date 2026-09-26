@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional, Protocol
@@ -35,11 +36,18 @@ class LLMError(RuntimeError):
 
 class LLMClient(Protocol):
     def complete_json(
-        self, system: str, user: str, *, schema: Optional[dict] = None
+        self,
+        system: str,
+        user: str,
+        *,
+        schema: Optional[dict] = None,
+        cache_system: bool = False,
     ) -> dict[str, Any]:
         """Return the model's reply parsed as a JSON object.
 
         `schema`, when given, is a JSON Schema the provider enforces where it can.
+        `cache_system` marks a system prompt reused across many calls (e.g. the
+        review's criteria for every paper) for prompt caching where supported.
         """
         ...
 
@@ -65,8 +73,8 @@ TASKS: dict[str, tuple[str, bool]] = {
     "prospero_form": ("low", True),
     "guide_drafting": ("low", False),
     "tie_break": ("max", True),
-    # Stage 5 tagging, until full-recall screening replaces it (A5).
-    "paper_tagging": ("low", False),
+    # Grouping stated primary outcomes for the heterogeneity check.
+    "outcome_grouping": ("low", False),
 }
 _EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
@@ -111,8 +119,13 @@ class UsageMeter:
     cost_usd: float = 0.0
     by_task: dict[str, float] = field(default_factory=dict)
     unpriced_models: set[str] = field(default_factory=set)
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def record(self, model: str, task: str, usage: Any) -> None:
+        with self._lock:  # calls run concurrently during screening
+            self._record(model, task, usage)
+
+    def _record(self, model: str, task: str, usage: Any) -> None:
         inp = getattr(usage, "input_tokens", 0) or 0
         out = getattr(usage, "output_tokens", 0) or 0
         cw = getattr(usage, "cache_creation_input_tokens", 0) or 0
@@ -178,9 +191,15 @@ class GroqClient:
     sleep: Callable[[float], None] = field(default=time.sleep, repr=False)
 
     def complete_json(
-        self, system: str, user: str, *, schema: Optional[dict] = None
+        self,
+        system: str,
+        user: str,
+        *,
+        schema: Optional[dict] = None,
+        cache_system: bool = False,
     ) -> dict[str, Any]:
-        # Groq's JSON mode takes no schema; callers validate the shape.
+        # Groq's JSON mode takes no schema and has no prompt caching; callers
+        # validate the shape.
         json_failures = rate_limits = 0
         while True:
             resp = self._post(system, user)
@@ -264,17 +283,30 @@ class AnthropicClient:
     client: Any = None  # anthropic.Anthropic, injectable for tests
     meter: Optional[UsageMeter] = None
 
-    def _sdk(self) -> Any:
+    def __post_init__(self) -> None:
+        # Built up front, not lazily: screening calls this from several threads.
         if self.client is None:
-            import anthropic  # imported lazily so Groq-only setups need no SDK
+            import anthropic
 
             self.client = anthropic.Anthropic(api_key=self.api_key)
+
+    def _sdk(self) -> Any:
         return self.client
 
     def complete_json(
-        self, system: str, user: str, *, schema: Optional[dict] = None
+        self,
+        system: str,
+        user: str,
+        *,
+        schema: Optional[dict] = None,
+        cache_system: bool = False,
     ) -> dict[str, Any]:
         output_config: dict[str, Any] = {"effort": self.effort}
+        system_param: Any = system
+        if cache_system:
+            system_param = [
+                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+            ]
         if schema is not None:
             output_config["format"] = {"type": "json_schema", "schema": schema}
         import anthropic  # noqa: F401  (typed errors below)
@@ -283,7 +315,7 @@ class AnthropicClient:
             response = self._sdk().messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
-                system=system,
+                system=system_param,
                 messages=[{"role": "user", "content": user}],
                 thinking={"type": "adaptive"} if self.thinking else {"type": "disabled"},
                 output_config=output_config,

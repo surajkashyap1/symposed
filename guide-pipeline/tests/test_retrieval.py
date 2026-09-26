@@ -1,7 +1,7 @@
 import httpx
 
 from guide_pipeline.http import CachedHttpClient
-from guide_pipeline.retrieval import USE_CATEGORIES, _normalize_use, dedupe, retrieve, tag_papers
+from guide_pipeline.retrieval import dedupe, retrieve
 from guide_pipeline.sources.pubmed import Paper, PubMedClient
 
 SAMPLE_XML = """<?xml version="1.0"?>
@@ -52,16 +52,6 @@ SAMPLE_XML = """<?xml version="1.0"?>
 """
 
 
-class FakeLLM:
-    def __init__(self, payload):
-        self.payload = payload
-        self.calls = 0
-
-    def complete_json(self, system, user, schema=None):
-        self.calls += 1
-        return self.payload
-
-
 def pubmed_for(handler, tmp_path):
     return PubMedClient(
         http=CachedHttpClient(
@@ -105,54 +95,9 @@ def test_dedupe_by_doi_pmid_and_title():
     assert [p.pmid for p in out] == ["1", "5"]
 
 
-def test_normalize_use_maps_to_vocabulary():
-    assert _normalize_use("potential included study") == "Potential included study"
-    assert _normalize_use("Background or rationale") == "Background or rationale"
-    assert _normalize_use("some freeform label") == ""  # unknown -> untagged
-    assert _normalize_use("") == ""  # empty stays empty (untagged fallback)
-
-
-def test_use_categories_are_the_spec_taxonomy():
-    # Spec section 6.3: a fixed taxonomy of exactly five suggested uses.
-    assert USE_CATEGORIES == (
-        "Background or rationale",
-        "Methods justification",
-        "Comparable review for discussion",
-        "Potential included study",
-        "Excluded but contextually relevant",
-    )
-
-
-def test_tag_papers_maps_and_falls_back(tmp_path):
-    papers = [
-        Paper("111", "T1", "abs1", (), "J", 2021, None),
-        Paper("222", "T2", "abs2", (), "J", 2019, None),
-    ]
-    llm = FakeLLM(
-        {
-            "tags": [
-                {"pmid": "111", "suggested_use": "Potential included study", "reason": "trial"}
-            ]
-        }
-    )
-    tagged = tag_papers(llm, papers)
-    assert tagged[0].suggested_use == "Potential included study" and tagged[0].reason == "trial"
-    assert tagged[1].suggested_use == "(untagged)"  # not returned by the model
-
-
 def test_retrieve_end_to_end(tmp_path):
     pubmed = pubmed_for(search_and_fetch_handler, tmp_path)
-    llm = FakeLLM(
-        {
-            "tags": [
-                {"pmid": "111", "suggested_use": "Potential included study", "reason": "r"},
-                {"pmid": "222", "suggested_use": "Background or rationale", "reason": ""},
-            ]
-        }
-    )
-    result = retrieve(pubmed, llm, "vitamin d sepsis", max_records=10)
-    assert len(result.papers) == 2
-    d = result.as_dict()
-    assert d["count"] == 2
-    assert d["papers"][0]["suggested_use"] == "Potential included study"
-    assert d["papers"][0]["doi"] == "10.1/own"
+    result = retrieve(pubmed, "vitamin d sepsis", max_records=10)
+    assert [p.pmid for p in result.papers] == ["111", "222"]
+    assert result.papers[0].doi == "10.1/own"
+    assert result.as_dict() == {"query": "vitamin d sepsis", "count": 2}

@@ -22,6 +22,7 @@ from .prospero import (
     import_export_file,
 )
 from .retrieval import retrieve
+from .screening import STATUSES, screen_papers, write_criteria
 from .settings import Settings
 from .sources import build_sources
 from .workspace import create_workspace
@@ -225,51 +226,44 @@ def candidates(topic: str, prefs: RequestPreferences | None = None) -> int:
 
 
 def retrieve_cmd(query: str) -> int:
-    """Step 4 live check: fetch full records for a chosen query, dedupe, tag."""
+    """Deep retrieval live check: fetch full records for a query and dedupe."""
     settings = Settings.load()
     sources = build_sources(settings)
-    meter = UsageMeter()
-    llm = _llm(settings, "paper_tagging", meter)
-    if llm is None:
-        return 2
-    print(f'Retrieving for: "{query}"  [{_model_label(settings, "paper_tagging")}]\n')
-    try:
-        result = retrieve(
-            sources.pubmed,
-            llm,
-            query,
-            max_records=settings.thresholds.max_records_to_screen,
-        )
-    except LLMError as exc:
-        print(f"  LLM error: {exc}")
-        _print_cost(meter)
-        return 1
-
-    for t in result.papers:
-        p = t.paper
-        year = p.year or "----"
-        print(f"  [{year}] PMID {p.pmid} — {p.title}")
-        print(f"          use: {t.suggested_use}" + (f" — {t.reason}" if t.reason else ""))
-    print(f"\n  {len(result.papers)} papers retrieved and tagged (deduped).")
-    _print_cost(meter)
+    print(f'Retrieving for: "{query}"\n')
+    result = retrieve(sources.pubmed, query, max_records=settings.thresholds.max_records_to_screen)
+    for p in result.papers:
+        print(f"  [{p.year or '----'}] PMID {p.pmid} — {p.title}")
+    print(f"\n  {len(result.papers)} papers retrieved (deduped).")
     return 0
 
 
-def guide_cmd(title: str, query: str) -> int:
-    """Step 5: retrieve for `query`, then write the guide.docx + results.json."""
+def guide_cmd(title: str, query: str, *, publication_type: str = SYSTEMATIC,
+              limit: int | None = None) -> int:
+    """Criteria, retrieval, full-recall screening, then guide.docx + results.json."""
     settings = Settings.load()
     sources = build_sources(settings)
     meter = UsageMeter()
-    llm = _llm(settings, "paper_tagging", meter)
-    if llm is None:
+    llms = {t: _llm(settings, t, meter) for t in
+            ("criteria_writing", "attribute_extraction", "screening", "outcome_grouping")}
+    if any(v is None for v in llms.values()):
         return 2
     print(f'Building guide: "{title}"\n  query: {query}\n')
     try:
-        result = retrieve(
-            sources.pubmed,
-            llm,
-            query,
-            max_records=settings.thresholds.max_records_to_screen,
+        criteria = write_criteria(llms["criteria_writing"], title,
+                                  publication_type=publication_type)
+        print("  Criteria:\n    " + criteria.as_text().replace("\n", "\n    "))
+        retrieval = retrieve(sources.pubmed, query,
+                             max_records=settings.thresholds.max_records_to_screen)
+        papers = retrieval.papers[:limit] if limit else retrieval.papers
+        print(f"\n  Screening {len(papers)} of {len(retrieval.papers)} retrieved papers "
+              f"({settings.llm_concurrency} at a time)...")
+        screening = screen_papers(
+            llms["attribute_extraction"], llms["screening"], criteria, papers,
+            europepmc=sources.europepmc,
+            grouping_llm=llms["outcome_grouping"],
+            heterogeneity_threshold=settings.thresholds.heterogeneity_max_outcomes,
+            fulltext_max_chars=settings.fulltext_max_chars,
+            concurrency=settings.llm_concurrency,
         )
     except LLMError as exc:
         print(f"  LLM error: {exc}")
@@ -278,23 +272,29 @@ def guide_cmd(title: str, query: str) -> int:
 
     search_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     workspace = create_workspace(title, base=settings.output_dir)
-    workspace.write_results(
-        {"title": title, "search_date": search_date, **result.as_dict()}
-    )
-    path = build_guide(workspace, title, result, search_date=search_date)
-    print(f"  {len(result.papers)} papers retrieved.")
+    workspace.write_results({
+        "title": title,
+        "search_date": search_date,
+        "publication_type": publication_type,
+        **retrieval.as_dict(),
+        "screened": len(papers),
+        **screening.as_dict(),
+        "model_cost_usd": round(meter.cost_usd, 4),
+    })
+    path = build_guide(workspace, title, retrieval, screening, search_date=search_date)
+    print()
+    for status in STATUSES:
+        print(f"  {status:<26} {screening.counts.get(status, 0):>4}")
+    print(f"  full text read for {screening.full_text_screened}; "
+          f"{len(screening.unclear_without_open_access())} to fetch via own access")
+    h = screening.heterogeneity
+    if h is not None:
+        print(f"  distinct primary outcomes: {h.distinct_outcomes} "
+              f"({'FLAG' if h.flagged else 'ok'}, threshold {h.threshold})")
     print(f"  Wrote {path}")
     print(f"  Wrote {workspace.results_path}")
     _print_cost(meter)
     return 0
-
-
-_PROSPERO_USAGE = """Usage: python -m guide_pipeline prospero <command>
-  status              mirror size, coverage and freshness
-  harvest             one-off full download of the register (slow; run once)
-  refresh             pull registrations since the last refresh (weekly)
-  import <file>       merge an export downloaded by hand (RIS or CSV)
-  check "<title>"     fuzzy-check a title against the mirror"""
 
 
 def prospero_cmd(args: list[str]) -> int:
@@ -422,20 +422,27 @@ def main(argv: list[str] | None = None) -> int:
     if argv and argv[0] == "prospero":
         return prospero_cmd(argv[1:])
     if argv and argv[0] == "guide":
+        usage = ('Usage: python -m guide_pipeline guide "<title>" -- "<pubmed query>" '
+                 '[--type "scoping review"] [--limit N]')
         rest = argv[1:]
-        if not rest:
-            print('Usage: python -m guide_pipeline guide "<title>" -- "<pubmed query>"')
+        pub_type, limit = SYSTEMATIC, None
+        if "--type" in rest:
+            i = rest.index("--type")
+            pub_type = rest[i + 1].lower() if i + 1 < len(rest) else SYSTEMATIC
+            rest = rest[:i] + rest[i + 2:]
+        if "--limit" in rest:
+            i = rest.index("--limit")
+            limit = int(rest[i + 1]) if i + 1 < len(rest) else None
+            rest = rest[:i] + rest[i + 2:]
+        if "--" not in rest:
+            print(usage)
             return 2
-        if "--" in rest:
-            sep = rest.index("--")
-            title = " ".join(rest[:sep])
-            query = " ".join(rest[sep + 1 :])
-        else:  # no separator: use the text as both title and query
-            title = query = " ".join(rest)
-        if not query:
-            print('Usage: python -m guide_pipeline guide "<title>" -- "<pubmed query>"')
+        sep = rest.index("--")
+        title, query = " ".join(rest[:sep]), " ".join(rest[sep + 1:])
+        if not title or not query:
+            print(usage)
             return 2
-        return guide_cmd(title, query)
+        return guide_cmd(title, query, publication_type=pub_type, limit=limit)
     return doctor()
 
 

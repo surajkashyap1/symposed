@@ -307,10 +307,8 @@ def prospero_cmd(args: list[str]) -> int:
     command, rest = args[0], args[1:]
 
     def source() -> EndpointSource:
-        agent = "symposed-guide-pipeline"
-        if settings.ncbi_email:
-            agent += f" ({settings.ncbi_email})"
-        return EndpointSource(min_interval=settings.prospero_min_interval, user_agent=agent)
+        # NCBI_EMAIL is a personal contact given for NCBI only; not sent here.
+        return EndpointSource(min_interval=settings.prospero_min_interval)
 
     def progress(line: str) -> None:
         print(f"  {line}", flush=True)

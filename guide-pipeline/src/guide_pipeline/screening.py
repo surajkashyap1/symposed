@@ -187,8 +187,19 @@ def _screen_system(criteria: Criteria) -> str:
         "as this text can show.\n"
         f'- "{UNCLEAR}": at least one criterion cannot be confirmed from this text, '
         "and none is clearly failed.\n"
-        f'- "{LIKELY_INELIGIBLE}": the text clearly shows at least one criterion is '
-        "not met, or an exclusion applies.\n"
+        f'- "{LIKELY_INELIGIBLE}": the text clearly shows the study falls outside the '
+        "review: its population, intervention or exposure, comparator or design is a "
+        "different one, or an exclusion plainly applies.\n"
+        "Partial or marginal mismatches are NOT clear failures: part of the sample "
+        "outside the population (e.g. an age boundary), the outcome reported but not "
+        "as the primary outcome, a slightly different timing or follow-up, a mixed "
+        f'population with a relevant subgroup. Choose "{UNCLEAR}" for these and name '
+        "the issue, so a human can judge it. This holds even when a criterion is "
+        "worded strictly (e.g. requires the outcome to be primary): reviewers often "
+        "include such studies after reading the full text.\n"
+        "Something the text does not mention is not the same as something the study "
+        "did not do: if a required element (such as an outcome) is simply not "
+        f'mentioned, especially in an abstract, choose "{UNCLEAR}".\n'
         "Never assume a detail the text does not state. The reason is one or two "
         "sentences naming the specific criteria that decided the status. You return "
         "ONLY JSON.\n\n"

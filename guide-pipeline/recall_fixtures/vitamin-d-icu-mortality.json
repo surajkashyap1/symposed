@@ -1,0 +1,61 @@
+{
+  "name": "vitamin-d-icu-mortality",
+  "review": {
+    "citation": "Vitamin D supplementation and mortality among critically ill adults: a systematic review and meta-analysis. Frontiers in Nutrition, 2026.",
+    "pmid": "42440428",
+    "pmcid": "PMC13333387",
+    "doi": "10.3389/fnut.2026.1796272"
+  },
+  "question": "Vitamin D supplementation and mortality among critically ill adults",
+  "criteria_source": "Transcribed from the review's section 2.2 (Selection criteria).",
+  "criteria": {
+    "population": "Critically ill adults (age > 18 years, with no upper age limit)",
+    "intervention_or_exposure": "Vitamin D or a vitamin D metabolite, without restriction on type, dosage, duration or route of administration (oral, enteral, intravenous or intramuscular)",
+    "comparator": "Placebo or no medication",
+    "outcomes": "Mortality in critically ill adults as the primary outcome (90-day, then 28-day, then hospital mortality)",
+    "study_designs": "Randomised controlled trials",
+    "setting": "",
+    "other_inclusion": [
+      "Articles published in all languages"
+    ],
+    "exclusion": [
+      "Studies that reported only ICU mortality",
+      "Case reports, conference abstracts, reviews, comments and post hoc analyses",
+      "Earlier reports of the same patient population (only the most current update is included)"
+    ]
+  },
+  "included_source": "Section 3.1: '21 studies were included in the meta-analysis (19, 20, 25-43)'; reference numbers mapped to PMIDs from the review's JATS reference list.",
+  "included_pmids": [
+    "25268295",
+    "31826336",
+    "21443793",
+    "25029202",
+    "26086941",
+    "27419080",
+    "29201115",
+    "28625255",
+    "30222631",
+    "31531088",
+    "31518978",
+    "32172522",
+    "31486158",
+    "34916747",
+    "33339609",
+    "38333320",
+    "38999389",
+    "38729818",
+    "39449769"
+  ],
+  "included_not_in_pubmed": [
+    {
+      "ref": 32,
+      "doi": "10.29333/ejgm/94224"
+    },
+    {
+      "ref": 37,
+      "doi": "10.1016/j.eujim.2020.101271"
+    }
+  ],
+  "search_query": "(vitamin D[tiab] OR 25-hydroxyvitamin D[tiab] OR calcitriol[tiab] OR cholecalciferol[tiab] OR ergocalciferol[tiab]) AND (critically ill[tiab] OR critical care[tiab]) AND (intensive care[tiab] OR ICU[tiab])",
+  "curated_by": "Claude (guide pipeline A5), 2026-09-26; please spot-check"
+}

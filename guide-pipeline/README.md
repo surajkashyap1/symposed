@@ -53,11 +53,15 @@ v1 above was the cut-down slice. We are now aligning it with the full
   `docs/spec-update-screening.md`), overridable per task via `MODEL_<TASK>` /
   `EFFORT_<TASK>` / `THINKING_<TASK>`. Structured outputs enforce each call's JSON
   schema (axes limited to the 14). Every run prints tokens and dollar cost.
-- **A5 — Stage 5 v2 (spec update)**: attribute extraction, then full-recall
-  screening against the review's criteria (likely eligible / likely ineligible /
-  unclear, check full text + reason + evidence basis), Europe PMC open-access full
-  text, DOI list for unclear-without-OA, heterogeneity gate. Replaces the
-  suggested-use taxonomy. Recall test on 3–4 known reviews + consistency test.
+- **A5 — Stage 5 v2 (spec update)** ✅ (Batch API → A5b): criteria writing,
+  attribute extraction, full-recall screening (likely eligible / likely
+  ineligible / unclear, check full text + reason + evidence basis), Europe PMC
+  open-access full text, DOI list for unclear-without-OA, heterogeneity gate.
+  Recall + consistency harnesses (`recall_fixtures/`, history in
+  `recall_fixtures/history.jsonl`). First fixture: 19/19 and 18/19 recall at the
+  final settings; 0 eligible/ineligible flips; 17/20 non-included papers marked
+  likely ineligible. Needs 2–3 more known reviews from Samarth.
+- **A5b — Batch API** for the per-paper steps (50% cheaper; fits the weekly batch).
 - **A6 — Stage 4b scoring + Stage 5 re-score + 5b tie break** (with override log).
 - **A7 — Database schema** (§5 tables, unique normalised-title index) + Sheets sync.
 - **A8 — More sources**: OpenAlex, Semantic Scholar, CORE, WHO ICTRP, Crossref.
@@ -136,5 +140,12 @@ python -m guide_pipeline guide "Vitamin D in the critically ill" -- "vitamin D[t
 ## Test
 
 ```bash
-pytest
+pytest                                  # offline, fake model calls, costs nothing
+python -m guide_pipeline recall recall_fixtures/vitamin-d-icu-mortality.json [--others 20]
+python -m guide_pipeline consistency recall_fixtures/vitamin-d-icu-mortality.json --papers 8
 ```
+
+A recall fixture is a published review whose included studies are known: its own
+criteria (transcribed), the included PMIDs (from the paper itself), and its search
+query. See `recall_fixtures/vitamin-d-icu-mortality.json` for the format. Recall
+and consistency runs call the model (roughly $0.40 and $0.30 each).

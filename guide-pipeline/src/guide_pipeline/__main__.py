@@ -22,6 +22,7 @@ from .prospero import (
     import_export_file,
 )
 from .retrieval import retrieve
+from .recall import Fixture, append_history, run_consistency, run_recall
 from .screening import STATUSES, screen_papers, write_criteria
 from .settings import Settings
 from .sources import build_sources
@@ -392,6 +393,76 @@ def prospero_cmd(args: list[str]) -> int:
     return 0
 
 
+HISTORY = "recall_fixtures/history.jsonl"
+
+
+def _screen_llms(settings: Settings, meter: UsageMeter):
+    extract = _llm(settings, "attribute_extraction", meter)
+    screen = _llm(settings, "screening", meter)
+    return extract, screen
+
+
+def recall_cmd(path: str, others: int = 0) -> int:
+    """Recall test on a known review (spec update acceptance test)."""
+    settings = Settings.load()
+    sources = build_sources(settings)
+    meter = UsageMeter()
+    extract, screen = _screen_llms(settings, meter)
+    if extract is None or screen is None:
+        return 2
+    fixture = Fixture.load(path)
+    print(f"Recall test: {fixture.name}  [{_model_label(settings, 'screening')}]\n")
+    r = run_recall(fixture, sources.pubmed, extract, screen, europepmc=sources.europepmc,
+                   others=others, concurrency=settings.llm_concurrency,
+                   fulltext_max_chars=settings.fulltext_max_chars)
+    for status, n in r.counts(r.included).items():
+        print(f"  included studies {status:<26} {n:>3}")
+    print(f"\n  RECALL: {len(r.flagged)}/{len(r.included)} = {r.recall:.1%}"
+          " (likely eligible or unclear)")
+    if r.not_retrieved:
+        print(f"  not returned by PubMed: {', '.join(r.not_retrieved)}")
+    for s in r.missed:
+        print(f"  MISSED PMID {s.paper.pmid} ({s.evidence_basis}): {s.paper.title[:80]}")
+        print(f"         reason: {s.reason}")
+    if r.others:
+        print(f"\n  other papers from the search: {r.counts(r.others)}")
+    _print_cost(meter)
+    append_history(HISTORY, {
+        "test": "recall", "fixture": fixture.name, "recall": round(r.recall, 4),
+        "included_screened": len(r.included), "missed_pmids": [s.paper.pmid for s in r.missed],
+        "counts": r.counts(r.included), "screening": _model_label(settings, "screening"),
+        "cost_usd": round(meter.cost_usd, 4),
+    })
+    print(f"  (appended to {HISTORY})")
+    return 0
+
+
+def consistency_cmd(path: str, papers: int = 5) -> int:
+    """Screen the same papers twice; report any status that changes."""
+    settings = Settings.load()
+    sources = build_sources(settings)
+    meter = UsageMeter()
+    extract, screen = _screen_llms(settings, meter)
+    if extract is None or screen is None:
+        return 2
+    fixture = Fixture.load(path)
+    print(f"Consistency test: {fixture.name}, {papers} papers x 2 runs\n")
+    c = run_consistency(fixture, sources.pubmed, extract, screen, papers=papers,
+                        europepmc=sources.europepmc, concurrency=settings.llm_concurrency)
+    for a, b in c.pairs:
+        mark = "FLIP " if (a, b) in c.flipped else ("change" if a.status != b.status else "same ")
+        print(f"  [{mark}] PMID {a.paper.pmid}: {a.status} | {b.status}")
+    print(f"\n  {len(c.pairs) - len(c.changed)}/{len(c.pairs)} identical status; "
+          f"{len(c.flipped)} eligible/ineligible flip(s)")
+    _print_cost(meter)
+    append_history(HISTORY, {
+        "test": "consistency", "fixture": fixture.name, "papers": len(c.pairs),
+        "changed": len(c.changed), "flipped": len(c.flipped),
+        "screening": _model_label(settings, "screening"), "cost_usd": round(meter.cost_usd, 4),
+    })
+    return 0 if not c.flipped else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "counts":
@@ -419,6 +490,21 @@ def main(argv: list[str] | None = None) -> int:
             print('Usage: python -m guide_pipeline retrieve "<pubmed query>"')
             return 2
         return retrieve_cmd(" ".join(argv[1:]))
+    if argv and argv[0] in ("recall", "consistency"):
+        rest = argv[1:]
+        n = None
+        for flag in ("--others", "--papers"):
+            if flag in rest:
+                i = rest.index(flag)
+                n = int(rest[i + 1])
+                rest = rest[:i] + rest[i + 2:]
+        if not rest:
+            print(f"Usage: python -m guide_pipeline {argv[0]} <fixture.json> "
+                  f"[{'--others N' if argv[0] == 'recall' else '--papers N'}]")
+            return 2
+        if argv[0] == "recall":
+            return recall_cmd(rest[0], others=n or 0)
+        return consistency_cmd(rest[0], papers=n or 5)
     if argv and argv[0] == "prospero":
         return prospero_cmd(argv[1:])
     if argv and argv[0] == "guide":

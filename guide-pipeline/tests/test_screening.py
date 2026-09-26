@@ -209,3 +209,11 @@ def test_criteria_prompt_keeps_scope_and_binary_eligibility():
     prompt = llm.calls[0]["user"]
     assert "Stay faithful to the question's scope" in prompt
     assert "keeping papers for reference" in prompt
+
+
+def test_screening_prompt_treats_marginal_mismatches_as_unclear():
+    from guide_pipeline.screening import _screen_system
+
+    system = _screen_system(CRIT)
+    assert "Partial or marginal mismatches are NOT clear failures" in system
+    assert "outcome reported but not as the primary outcome" in system

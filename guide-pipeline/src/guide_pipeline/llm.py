@@ -67,7 +67,9 @@ TASKS: dict[str, tuple[str, bool]] = {
     "candidate_generation": ("high", True),
     "search_strategy": ("medium", True),
     "attribute_extraction": ("low", False),
-    "screening": ("medium", True),
+    # Measured 2026-09-26: high was steadier than medium (7/8 vs 5/8 identical
+    # statuses on repeat) for ~7% more cost, so screening runs at high.
+    "screening": ("high", True),
     "criteria_writing": ("high", True),
     "protocol_drafting": ("medium", True),
     "prospero_form": ("low", True),

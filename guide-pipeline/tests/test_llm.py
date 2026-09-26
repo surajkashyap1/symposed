@@ -194,7 +194,7 @@ def test_build_llm_anthropic_is_configured_per_task():
     s = Settings(llm_provider="anthropic", anthropic_api_key="k")
     client = build_llm(s, task="screening")
     assert isinstance(client, AnthropicClient)
-    assert (client.effort, client.thinking, client.task) == ("medium", True, "screening")
+    assert (client.effort, client.thinking, client.task) == ("high", True, "screening")
     with pytest.raises(LLMError):
         build_llm(Settings(llm_provider="anthropic", anthropic_api_key=None))
 

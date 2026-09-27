@@ -73,7 +73,14 @@ v1 above was the cut-down slice. We are now aligning it with the full
   runs (`LLM_BATCH=true`); `--sync` switches to parallel calls for quick tests.
   Batches usually finish in minutes, at most 24 hours, well inside the 7-day
   turnaround. Failed/expired requests in a batch keep their paper as unclear.
-- **A6 — Stage 4b scoring + Stage 5 re-score + 5b tie break** (with override log).
+- **A6 — Stage 4b scoring + Stage 5 re-score + 5b tie break** ✅ (`scoring.py`):
+  six component scores from API counts and the proforma (workable 12-40 band,
+  recency, rationale, alignment with the user's topic, feasibility against the
+  team's cap, distance from the nearest protocol), configurable weights
+  (`SCORE_WEIGHT_<NAME>`), margin and max tied. A clear leader is screened alone;
+  up to 3 tied candidates are each screened, re-scored on what screening found,
+  and only if still tied does the model choose (max effort), with its rationale
+  per criterion stored, a reviewer override field, and unchosen candidates kept.
 - **A7 — Database schema** (§5 tables, unique normalised-title index) + Sheets sync.
 - **A8 — More sources**: OpenAlex, Semantic Scholar, CORE, WHO ICTRP, Crossref.
 - **A9 — Full 26-section guide** with the verbatim statements (§6).

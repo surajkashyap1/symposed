@@ -94,7 +94,10 @@ def run(tmp_path, monkeypatch, screen_result, **kw):
     meter.record("claude-sonnet-5", "screening", usage)  # $2
     llms = {t: object() for t in ("candidate_generation", "criteria_writing",
                                   "attribute_extraction", "screening", "outcome_grouping")}
-    sources = SimpleNamespace(pubmed=None, clinicaltrials=None, europepmc=None)
+    llms["tie_break"] = kw.pop("tie_llm", object())
+    # scoring asks PubMed how much of the eligible evidence is recent
+    sources = SimpleNamespace(pubmed=SimpleNamespace(count=lambda q, **kw: 15),
+                              clinicaltrials=None, europepmc=None)
     return run_mod.run_request(
         from_proforma(FORM, order_id="order-1"), settings=settings_for(tmp_path),
         sources=sources, mirror=fresh_mirror(tmp_path), llms=llms, meter=meter, **kw)
@@ -173,3 +176,36 @@ def test_summary_splits_blank_and_given_topics(tmp_path):
     assert s["topic_given"]["runs"] == 1 and s["topic_given"]["mean_cost_usd"] == 6.0
     assert s["blank_topic"]["found_rate"] == 0.5
     assert s["blank_topic"]["mean_cost_per_paper_usd"] == 0.02  # None ignored
+
+
+def test_clear_winner_is_screened_alone(tmp_path, monkeypatch, stubbed):
+    near = assessment("Near-identical", "pass", eligible=30)
+    weak = assessment("Weak", "pass", axis="Timing or dose", eligible=300)
+    result = ScreenResult([near, weak], [weak, near], weak, batches=1, outcome=FOUND)
+    report = run(tmp_path, monkeypatch, result)
+    # scoring, not "most studies", picks the winner, and only it is screened
+    assert report.title == "Near-identical"
+    assert report.metrics["tied_candidates"] == 1 and not report.metrics["tie_break_used"]
+    assert report.selection.as_dict()["unchosen"] == ["Weak"]
+
+
+class TieLLM:
+    def __init__(self):
+        self.calls = 0
+
+    def complete_json(self, system, user, schema=None, cache_system=False):
+        self.calls += 1
+        return {"choice": 1, "summary": "second is more useful", "rationale": []}
+
+
+def test_tied_candidates_are_each_screened_then_tie_broken(tmp_path, monkeypatch, stubbed):
+    a, b = assessment("Alpha", "pass"), assessment("Beta", "pass")
+    result = ScreenResult([a, b], [a, b], a, batches=1, outcome=FOUND)
+    tie = TieLLM()
+    report = run(tmp_path, monkeypatch, result, tie_llm=tie)
+    assert tie.calls == 1  # identical scores even after re-scoring
+    assert report.title == "Beta" and report.metrics["tie_break_used"]
+    assert report.metrics["tied_candidates"] == 2
+    sel = json.loads(report.workspace.results_path.read_text())["selection"]
+    assert sel["tie_break"]["model_choice"] == 1 and sel["unchosen"] == ["Alpha"]
+    assert len(sel["rescored"]) == 2

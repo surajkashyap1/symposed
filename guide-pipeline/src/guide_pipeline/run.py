@@ -36,7 +36,23 @@ from .llm import LLMClient, UsageMeter
 from .prospero import ProsperoMirror
 from .request import GuideRequest
 from .retrieval import RetrievalResult, retrieve
-from .screening import STATUSES, ScreeningResult, screen_papers, write_criteria
+from .screening import (
+    LIKELY_ELIGIBLE,
+    STATUSES,
+    UNCLEAR,
+    ScreeningResult,
+    screen_papers,
+    write_criteria,
+)
+from .scoring import (
+    ScoreWeights,
+    Selection,
+    break_tie,
+    rank,
+    rescore,
+    score_candidate,
+    tied_leaders,
+)
 from .settings import Settings
 from .sources import Sources
 from .workspace import Workspace, create_workspace
@@ -68,6 +84,7 @@ class RunReport:
     guide_path: str = ""
     seconds: dict[str, float] = field(default_factory=dict)
     metrics: dict[str, Any] = field(default_factory=dict)
+    selection: Optional[Selection] = None
 
 
 def _gate_counts(screen: ScreenResult) -> dict[str, dict[str, int]]:
@@ -81,7 +98,8 @@ def _gate_counts(screen: ScreenResult) -> dict[str, dict[str, int]]:
 def build_metrics(report: RunReport, meter: UsageMeter, settings: Settings) -> dict[str, Any]:
     """The per-guide feedback record (flat enough to load into a spreadsheet)."""
     r, prefs, s = report.request, report.request.preferences, report.screen
-    top = s.top
+    sel = report.selection
+    top = sel.winner.assessment if sel and sel.winner else s.top
     screened = report.screening
     n_screened = len(screened.papers) if screened else 0
     cost_screening = sum(meter.by_task.get(t, 0.0) for t in
@@ -113,6 +131,9 @@ def build_metrics(report: RunReport, meter: UsageMeter, settings: Settings) -> d
             top.prospero.matches[0].score if top and top.prospero.matches else 0.0
         ),
         "publication_type_delivered": report.publication_type or None,
+        "tied_candidates": len(report.selection.tied) if report.selection else 0,
+        "tie_break_used": bool(report.selection and report.selection.tie_break),
+        "winner_score": report.selection.winner.total if report.selection and report.selection.winner else None,
         # stage 5: retrieval and screening
         "papers_retrieved": len(report.retrieval.papers) if report.retrieval else 0,
         "papers_screened": n_screened,
@@ -188,34 +209,86 @@ def run_request(
         _finish(report, meter, settings, extra={"contact_reason": screen.contact_reason})
         return report
 
-    top = screen.top
-    report.title = top.candidate.title
     report.publication_type = (
         "scoping or narrative review" if screen.outcome == FOUND_OTHER_TYPE
         else prefs.publication_type
     )
-    say(f"Chosen question ({top.candidate.axis}): {report.title}")
+    pool = screen.survivors if screen.outcome != FOUND_OTHER_TYPE else screen.downgraded
+    cap = records_cap(th, collaborators=prefs.collaborators)
+    today = datetime.now(timezone.utc).date()
+    weights = ScoreWeights.from_env()
 
-    criteria = timed("criteria", lambda: write_criteria(
-        llms["criteria_writing"], report.title, publication_type=report.publication_type))
-    query = top.candidate.pubmed_query
-    if report.publication_type == SYSTEMATIC:
-        query = f"({query}) {FILTER_PRIMARY}"
-    retrieval = timed("retrieval", lambda: retrieve(
-        sources.pubmed, query, max_records=records_cap(th, collaborators=prefs.collaborators)))
-    report.retrieval = retrieval
-    papers = retrieval.papers[:limit] if limit else retrieval.papers
-    say(f"Screening {len(papers)} of {len(retrieval.papers)} papers "
-        f"({settings.llm_concurrency} at a time)...")
-    screening = timed("screening", lambda: screen_papers(
-        llms["attribute_extraction"], llms["screening"], criteria, papers,
-        europepmc=sources.europepmc, grouping_llm=llms["outcome_grouping"],
-        heterogeneity_threshold=th.heterogeneity_max_outcomes,
-        fulltext_max_chars=settings.fulltext_max_chars,
-        concurrency=settings.llm_concurrency,
-    ))
-    report.screening = screening
-    search_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    def recent_share(a) -> float:
+        # One extra count: how much of the eligible evidence is recent.
+        q = f"({a.candidate.pubmed_query}) {FILTER_PRIMARY}"
+        recent = sources.pubmed.count(q, min_year=today.year - th.recency_years + 1)
+        return recent / a.counts.eligible_studies if a.counts.eligible_studies else 0.0
+
+    score_kw = dict(preferences=prefs, topic=request.topic, thresholds=th, weights=weights)
+    shares = timed("scoring", lambda: {a.candidate.title: recent_share(a) for a in pool})
+    initial = rank([score_candidate(a, recent_share=shares[a.candidate.title], **score_kw)
+                    for a in pool])
+    tied = tied_leaders(initial, margin=th.score_margin, max_tied=th.max_tied)
+    selection = Selection(initial=initial, tied=tied)
+    if len(tied) > 1:
+        say(f"{len(tied)} candidates within {th.score_margin} of each other: "
+            "deep retrieval for each")
+
+    deep: dict[str, tuple] = {}
+    for s in tied:  # Stage 5: deep retrieval for the winner, or for every tied one
+        a = s.assessment
+        say(f"Deep retrieval ({a.candidate.axis}): {a.candidate.title}")
+        criteria = timed("criteria", lambda: write_criteria(
+            llms["criteria_writing"], a.candidate.title,
+            publication_type=report.publication_type))
+        query = a.candidate.pubmed_query
+        if report.publication_type == SYSTEMATIC:
+            query = f"({query}) {FILTER_PRIMARY}"
+        retrieval = timed("retrieval", lambda: retrieve(sources.pubmed, query, max_records=cap))
+        papers = retrieval.papers[:limit] if limit else retrieval.papers
+        say(f"  screening {len(papers)} of {len(retrieval.papers)} papers...")
+        screening = timed("screening", lambda: screen_papers(
+            llms["attribute_extraction"], llms["screening"], criteria, papers,
+            europepmc=sources.europepmc, grouping_llm=llms["outcome_grouping"],
+            heterogeneity_threshold=th.heterogeneity_max_outcomes,
+            fulltext_max_chars=settings.fulltext_max_chars,
+            concurrency=settings.llm_concurrency,
+        ))
+        deep[a.candidate.title] = (s, criteria, retrieval, screening)
+
+    winner = tied[0]
+    if len(tied) > 1:
+        # Re-score on what retrieval actually found; model judgement only if still tied.
+        def found(title: str) -> int:
+            c = deep[title][3].counts
+            return c.get(LIKELY_ELIGIBLE, 0) + c.get(UNCLEAR, 0)
+
+        selection.rescored = rank([
+            rescore(s, screened_eligible=found(s.assessment.candidate.title),
+                    recent_share=shares[s.assessment.candidate.title], **score_kw)
+            for s in tied
+        ])
+        still = tied_leaders(selection.rescored, margin=th.score_margin, max_tied=th.max_tied)
+        winner = still[0]
+        if len(still) > 1:
+            say("Still tied after deep retrieval: tie break (5b)")
+            summaries = [
+                (s, f"{len(deep[s.assessment.candidate.title][2].papers)} papers retrieved; "
+                    f"screened {deep[s.assessment.candidate.title][3].counts}")
+                for s in still
+            ]
+            selection.tie_break = timed("tie_break", lambda: break_tie(
+                llms["tie_break"], summaries, preferences=prefs))
+            winner = still[selection.tie_break.final_choice]
+    selection.winner = winner
+    report.selection = selection
+
+    top = winner.assessment
+    _, criteria, retrieval, screening = deep[top.candidate.title]
+    report.title = top.candidate.title
+    report.retrieval, report.screening = retrieval, screening
+    say(f"Chosen question ({top.candidate.axis}): {report.title}")
+    search_date = today.strftime("%Y-%m-%d")
     report.guide_path = timed("guide", lambda: build_guide(
         workspace, report.title, retrieval, screening,
         search_date=search_date, landscape=landscape))
@@ -227,6 +300,7 @@ def run_request(
         "gates": [g.__dict__ for g in top.verdict.gates],
         "prospero_check": top.prospero.as_dict(),
         "searches_run": [s.__dict__ for s in top.searches],
+        "selection": selection.as_dict(),
         **retrieval.as_dict(),
         **screening.as_dict(),
     })

@@ -54,6 +54,11 @@ class Thresholds:
     # the same topic ~0.40-0.50. So only obvious rewordings auto-reject; the
     # overlap band goes to a human.
     heterogeneity_max_outcomes: int = 5         # flag above this many distinct primary outcomes
+    workable_min_studies: int = 12              # Stage 4b: eligible studies in the workable band...
+    workable_max_studies: int = 40              # ...score highest
+    recency_years: int = 5                      # "recent" evidence for the recency score
+    score_margin: float = 0.05                  # leader must win by more than this to go alone
+    max_tied: int = 3                           # at most this many tied go to deep retrieval
     prospero_reject_similarity: float = 0.75    # a registered title this similar rejects
     prospero_review_similarity: float = 0.45    # ...this similar is surfaced for human review
 
@@ -71,6 +76,11 @@ class Thresholds:
             candidate_max_per_axis=_get_int("CANDIDATE_MAX_PER_AXIS", 2),
             max_candidate_batches=_get_int("MAX_CANDIDATE_BATCHES", 3),
             heterogeneity_max_outcomes=_get_int("HETEROGENEITY_MAX_OUTCOMES", 5),
+            workable_min_studies=_get_int("WORKABLE_MIN_STUDIES", 12),
+            workable_max_studies=_get_int("WORKABLE_MAX_STUDIES", 40),
+            recency_years=_get_int("RECENCY_YEARS", 5),
+            score_margin=_get_float("SCORE_MARGIN", 0.05),
+            max_tied=_get_int("MAX_TIED", 3),
             prospero_reject_similarity=_get_float("PROSPERO_REJECT_SIMILARITY", 0.75),
             prospero_review_similarity=_get_float("PROSPERO_REVIEW_SIMILARITY", 0.45),
         )

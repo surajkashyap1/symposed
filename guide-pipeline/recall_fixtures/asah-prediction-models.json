@@ -1,0 +1,57 @@
+{
+  "name": "asah-prediction-models",
+  "review": {
+    "citation": "Parekh A, et al. Clinical prediction models for aneurysmal subarachnoid hemorrhage: a systematic review update. J NeuroIntervent Surg 2023.",
+    "pmid": "38129109",
+    "doi": "10.1136/jnis-2023-021107"
+  },
+  "question": "Clinical prediction models for functional outcome after aneurysmal subarachnoid hemorrhage",
+  "criteria_source": "Transcribed from the review's Methods ('Types of study to be included' and 'Exclusion'); PDF supplied by an author.",
+  "criteria": {
+    "population": "Adult patients presenting with aneurysmal subarachnoid hemorrhage (aSAH)",
+    "intervention_or_exposure": "A clinical prediction model developed (or validated) with multivariable statistical or machine learning methods, based on the independent effects of at least two predictor variables",
+    "comparator": "Not applicable",
+    "outcomes": "Functional outcome, mainly the Glasgow Outcome Scale (GOS) or modified Rankin Scale (mRS), at discharge, 3, 6 or 12 months after ictus",
+    "study_designs": "Studies that develop new prediction models or validate existing ones",
+    "setting": "",
+    "other_inclusion": [
+      "Published between January 2010 and February 2022",
+      "Written in English"
+    ],
+    "exclusion": [
+      "Models for secondary outcome events or complications (e.g. angiographic vasospasm, delayed cerebral ischemia, cerebral infarction, seizures, hydrocephalus)",
+      "Grading schemes based on expert opinion or linear regression",
+      "Prediction models for traumatic SAH or perimesencephalic SAH",
+      "Models using only a subset of patients presenting with aSAH",
+      "Predictors, particularly biomarkers, not measured as part of routine clinical care"
+    ]
+  },
+  "included_source": "Table 1 (22 studies, 29 models): references 1 and 8-28, mapped to PMIDs via the Europe PMC reference list; ref 1 (Jaja 2018, SAHIT, BMJ) found by title search.",
+  "included_pmids": [
+    "29348138",
+    "33408908",
+    "30268551",
+    "33044089",
+    "30787083",
+    "28983801",
+    "23690884",
+    "34388213",
+    "28974630",
+    "33548918",
+    "27129898",
+    "30981583",
+    "33474607",
+    "27512607",
+    "33092930",
+    "32860455",
+    "30869562",
+    "34034125",
+    "34106620",
+    "29350603",
+    "29948072",
+    "32308881"
+  ],
+  "included_not_in_pubmed": [],
+  "search_query": "(subarachnoid hemorrhage[tiab] OR subarachnoid haemorrhage[tiab]) AND aneurysm*[tiab] AND (predict*[tiab] OR prognos*[tiab]) AND (model*[tiab] OR score*[tiab] OR nomogram*[tiab]) AND 2010:2022[dp]",
+  "curated_by": "Claude (guide pipeline), 2026-09-28, from the author-supplied PDF; please spot-check"
+}

@@ -403,7 +403,7 @@ def prospero_cmd(args: list[str]) -> int:
 
 HISTORY = "recall_fixtures/history.jsonl"
 RUN_TASKS = ("candidate_generation", "criteria_writing", "attribute_extraction",
-             "screening", "outcome_grouping")
+             "screening", "outcome_grouping", "tie_break")
 
 
 def run_cmd(path: str, limit: int | None = None) -> int:

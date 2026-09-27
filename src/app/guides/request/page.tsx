@@ -8,6 +8,7 @@ import {
   FLEXIBILITY_ADVICE,
   GUIDE_GRADES,
   HOURS_OPTIONS,
+  OPEN_TOPIC_HELP,
   MAX_GUIDE_SPECIALTIES,
   PUBLICATION_TYPES,
   STATS_OPTIONS,
@@ -132,17 +133,16 @@ export default async function GuideRequestPage({
             </div>
 
             <div className="grid gap-2">
-              <Label htmlFor="topics">Topic areas of interest</Label>
+              <Label htmlFor="topics">Topic areas of interest (optional)</Label>
               <Textarea
                 id="topics"
                 name="topics"
-                required
                 rows={4}
                 maxLength={TOPIC_MAX_CHARS}
                 placeholder="A condition, a population, a treatment, a question that has bothered you on the ward"
               />
               <p className="text-xs text-muted-foreground">
-                Up to {TOPIC_MAX_CHARS} characters.
+                {OPEN_TOPIC_HELP} Up to {TOPIC_MAX_CHARS} characters.
               </p>
             </div>
 

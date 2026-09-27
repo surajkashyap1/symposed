@@ -2,14 +2,16 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { TOPIC_CONSENT_TEXT } from "@/lib/guides-meta";
 
-// The §3.2 consent block: two separate checkboxes, both unticked by default,
-// both required before the payment button enables. Never pre-ticked, never
+// The §3.2 consent block: separate checkboxes, all unticked by default, all
+// required before the payment button enables. Never pre-ticked, never
 // combined — the first disapplies the 14-day cancellation right (Consumer
 // Contracts Regulations 2013) and must be a real, active choice.
 export function GuideConsentGate({ payLabel }: { payLabel: string }) {
   const [immediate, setImmediate] = useState(false);
   const [terms, setTerms] = useState(false);
+  const [topic, setTopic] = useState(false);
 
   return (
     <div className="flex flex-col gap-3">
@@ -45,10 +47,20 @@ export function GuideConsentGate({ payLabel }: { payLabel: string }) {
           .
         </span>
       </label>
+      <label className="flex items-start gap-2.5 text-sm leading-relaxed">
+        <input
+          type="checkbox"
+          name="consentTopic"
+          checked={topic}
+          onChange={(e) => setTopic(e.target.checked)}
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-input accent-primary"
+        />
+        {TOPIC_CONSENT_TEXT}
+      </label>
       <Button
         type="submit"
         size="lg"
-        disabled={!immediate || !terms}
+        disabled={!immediate || !terms || !topic}
         className="mt-2 self-start"
       >
         {payLabel}

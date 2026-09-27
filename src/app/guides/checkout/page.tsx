@@ -117,7 +117,9 @@ export default async function GuideCheckoutPage({
             <h2 className="text-base font-semibold">Your answers</h2>
             <dl className="mt-3 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
               {PROFORMA_LABELS.map(([key, label]) => {
-                const value = proforma[key];
+                const raw = proforma[key];
+                // A blank topic is a choice, not a missing answer.
+                const value = key === "topics" && raw === "" ? "Left open, you choose" : raw;
                 if (value == null || value === "") return null;
                 return (
                   <div key={key} className={key === "topics" ? "sm:col-span-2" : ""}>

@@ -44,6 +44,17 @@ export const TOPIC_FLEXIBILITY_OPTIONS = [
 export const FLEXIBILITY_ADVICE =
   "Most specialty training programmes in the UK do not need your publication to be in a specific field. Please check your own programme's requirements before requesting a guide. Keeping your preferences flexible gives the best results, especially where your topic has already been well researched.";
 
+// Help text under the (optional) topic field. Do not claim it is cheaper for
+// us: that is unmeasured. It does give the search more room.
+export const OPEN_TOPIC_HELP =
+  "Optional. Leave this blank if you are happy for us to choose: an open topic gives us more room to find a strong, publishable title.";
+
+// Required checkout tick box (guide request update, 2026-09-28). It records that
+// the buyer accepts a topic-specific guide cannot be guaranteed. It must never
+// say "no refunds" or "non-refundable" (CRA 2015; see GUARANTEE_PARAGRAPHS).
+export const TOPIC_CONSENT_TEXT =
+  "I understand that Symposed cannot guarantee a guide on my exact topic or requirements. If no suitable question fits my preferences, Symposed will email me to check whether I am flexible before going further.";
+
 // Shown on the request form and in the checkout pre-contract information.
 export const EXACT_REQUIREMENTS_DISCLAIMER =
   "We can never promise a guide on a topic that matches your exact requirements. If we cannot find a suitable question within your preferences, we will email you to check whether you are flexible on anything before we go further.";

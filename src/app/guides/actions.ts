@@ -78,7 +78,8 @@ export async function submitGuideProforma(formData: FormData) {
   if (!oneOf(grade, GUIDE_GRADES)) fail("Please choose your grade or role.");
   if (specialties.length === 0 && !specialtyUndecided)
     fail("Give up to 3 specialty interests, or tick undecided.");
-  if (!topics) fail("Tell us about your topic areas of interest.");
+  // Topic is optional: a blank topic lets the search choose within the
+  // specialties (or any field, if those are undecided too).
   if (topics.length > TOPIC_MAX_CHARS)
     fail(`Topic areas are capped at ${TOPIC_MAX_CHARS} characters.`);
   if (!oneOf(publicationType, PUBLICATION_TYPES))
@@ -203,9 +204,10 @@ export async function startGuideCheckout(formData: FormData) {
   // Both consents must be actively ticked (server-enforced; never pre-ticked).
   if (
     formData.get("consentImmediate") !== "on" ||
-    formData.get("consentTerms") !== "on"
+    formData.get("consentTerms") !== "on" ||
+    formData.get("consentTopic") !== "on"
   )
-    fail("error=" + encodeURIComponent("Please tick both consent boxes to continue."));
+    fail("error=" + encodeURIComponent("Please tick all three boxes to continue."));
 
   const hdrs = await headers();
   const ip =
@@ -217,9 +219,16 @@ export async function startGuideCheckout(formData: FormData) {
   // Record consent evidence before charging (spec §3.2: without it the
   // cancellation waiver is worthless).
   const now = new Date();
+  // The topic acknowledgement has no column of its own: its timestamp is kept
+  // in the proforma JSON alongside the answers it qualifies.
+  const proforma = {
+    ...(JSON.parse(order.proforma) as Record<string, unknown>),
+    consentTopicAt: now.toISOString(),
+  };
   await db
     .update(guideOrders)
     .set({
+      proforma: JSON.stringify(proforma),
       consentImmediateAt: now,
       consentTermsAt: now,
       consentIp: ip,

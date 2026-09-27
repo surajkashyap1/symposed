@@ -61,6 +61,13 @@ v1 above was the cut-down slice. We are now aligning it with the full
   `recall_fixtures/history.jsonl`). First fixture: 19/19 and 18/19 recall at the
   final settings; 0 eligible/ineligible flips; 17/20 non-included papers marked
   likely ineligible. Needs 2–3 more known reviews from Samarth.
+- **Run + feedback metrics** ✅: `request.py` turns any website proforma into a
+  request (review type and flexibility, topic or BLANK topic starting from the
+  specialties, team size, a plain description of the user so questions stay
+  feasible); `run.py` runs one request end to end and appends ~40 metrics per
+  guide to `output/metrics.jsonl` (request shape, per-gate outcomes, pass rate,
+  axes, papers, full-text share, status counts, cost by task, cost per paper,
+  seconds per stage). `metrics` summarises blank-topic vs topic-given runs.
 - **A5b — Batch API** for the per-paper steps (50% cheaper; fits the weekly batch).
 - **A6 — Stage 4b scoring + Stage 5 re-score + 5b tie break** (with override log).
 - **A7 — Database schema** (§5 tables, unique normalised-title index) + Sheets sync.
@@ -136,6 +143,17 @@ python -m guide_pipeline retrieve "vitamin D[tiab] AND critically ill[tiab] AND 
 python -m guide_pipeline guide "Vitamin D in the critically ill" -- "vitamin D[tiab] AND critically ill[tiab]"
                                                            # Step 5: writes output/<request>/guide.docx + results.json
 ```
+
+## Run a whole request
+
+```bash
+python -m guide_pipeline run output/requests/<order>.json [--limit N]   # proforma in, draft guide + metrics out
+python -m guide_pipeline metrics                                        # averages across all runs
+```
+
+The request file is the website's proforma answers, bare or as
+`{"order_id": ..., "proforma": {...}}`. Request files and outputs stay in the
+gitignored `output/` folder: they contain customer answers.
 
 ## Test
 

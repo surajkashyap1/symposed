@@ -22,6 +22,8 @@ from .prospero import (
     import_export_file,
 )
 from .retrieval import retrieve
+from .request import from_proforma
+from .run import run_request, summarise_metrics
 from .recall import Fixture, append_history, run_consistency, run_recall
 from .screening import STATUSES, screen_papers, write_criteria
 from .settings import Settings
@@ -394,6 +396,76 @@ def prospero_cmd(args: list[str]) -> int:
 
 
 HISTORY = "recall_fixtures/history.jsonl"
+RUN_TASKS = ("candidate_generation", "criteria_writing", "attribute_extraction",
+             "screening", "outcome_grouping")
+
+
+def run_cmd(path: str, limit: int | None = None) -> int:
+    """One request end to end: a proforma JSON file in, a draft guide + metrics out.
+
+    The file holds the website's proforma answers, either bare or as
+    {"order_id": ..., "proforma": {...}}.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    data = _json.loads(_Path(path).read_text(encoding="utf-8"))
+    proforma = data.get("proforma", data)
+    request = from_proforma(proforma, order_id=str(data.get("order_id", "")))
+    settings = Settings.load()
+    sources = build_sources(settings)
+    meter = UsageMeter()
+    llms = {t: _llm(settings, t, meter) for t in RUN_TASKS}
+    if any(v is None for v in llms.values()):
+        return 2
+    prefs = request.preferences
+    print(f"Guide request {request.order_id or path}")
+    print(f"  {prefs.publication_type} "
+          f"({'type flexible' if prefs.type_flexible else 'type strict'}), "
+          f"topic {'BLANK' if request.blank_topic else repr(request.topic)} "
+          f"(flexibility: {prefs.topic_flexibility}), team of {prefs.collaborators}\n")
+    mirror = ProsperoMirror(settings.prospero_db)
+    try:
+        report = run_request(request, settings=settings, sources=sources, mirror=mirror,
+                             llms=llms, meter=meter, limit=limit,
+                             progress=lambda m: print(f"  {m}", flush=True))
+    except StaleMirrorError as exc:
+        print(f"  REFUSING TO RUN: {exc}")
+        return 1
+    except LLMError as exc:
+        print(f"  LLM error: {exc}")
+        _print_cost(meter)
+        return 1
+    finally:
+        mirror.close()
+    m = report.metrics
+    print(f"\n  Outcome: {report.outcome.upper()}")
+    print(f"  Candidates: {m['candidates_generated']} in {m['batches']} batch(es), "
+          f"{m['candidates_passed']} passed")
+    if report.screening is not None:
+        for status, n in report.screening.counts.items():
+            print(f"  {status:<26} {n:>4}")
+        print(f"  Guide: {report.guide_path}")
+    print(f"  Results: {report.workspace.results_path}")
+    print(f"  Time: {m['seconds_total']:.0f}s  "
+          f"Cost: ${m['cost_usd']:.2f} (candidates ${m['cost_candidates_usd']:.2f}, "
+          f"screening ${m['cost_screening_usd']:.2f})")
+    print(f"  Metrics appended to {settings.output_dir}/metrics.jsonl")
+    return 0
+
+
+def metrics_cmd() -> int:
+    """Averages across all recorded runs, blank topic vs topic given."""
+    import json as _json
+    from pathlib import Path as _Path
+
+    settings = Settings.load()
+    path = _Path(settings.output_dir) / "metrics.jsonl"
+    if not path.exists():
+        print("No runs recorded yet.")
+        return 1
+    print(_json.dumps(summarise_metrics(path), indent=2))
+    return 0
 
 
 def _screen_llms(settings: Settings, meter: UsageMeter):
@@ -490,6 +562,19 @@ def main(argv: list[str] | None = None) -> int:
             print('Usage: python -m guide_pipeline retrieve "<pubmed query>"')
             return 2
         return retrieve_cmd(" ".join(argv[1:]))
+    if argv and argv[0] == "run":
+        rest = argv[1:]
+        limit = None
+        if "--limit" in rest:
+            i = rest.index("--limit")
+            limit = int(rest[i + 1])
+            rest = rest[:i] + rest[i + 2:]
+        if not rest:
+            print("Usage: python -m guide_pipeline run <request.json> [--limit N]")
+            return 2
+        return run_cmd(rest[0], limit=limit)
+    if argv and argv[0] == "metrics":
+        return metrics_cmd()
     if argv and argv[0] in ("recall", "consistency"):
         rest = argv[1:]
         n = None

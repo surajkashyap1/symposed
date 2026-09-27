@@ -166,6 +166,7 @@ class RequestPreferences:
     topic_flexibility: str = TOPIC_EXACT  # exact | specialty | any
     specialties: tuple[str, ...] = ()
     collaborators: int = 2
+    context: str = ""  # plain-language description of the user, from the proforma
 
 
 FOUND, FOUND_OTHER_TYPE, NEEDS_CONTACT = "found", "found_other_type", "needs_contact"
@@ -259,6 +260,7 @@ def _build_prompt(
         f'Topic: "{topic}".{context}\n\n'
         f"The user wants a {preferences.publication_type}: every question must suit "
         f"that type of review. {scope}\n\n"
+        f"{_context_block(preferences)}"
         f"Propose between {min_n} and {max_n} candidate review titles. Each must be a "
         "specific, answerable review question that fills a GAP of one of these kinds "
         f"(its axis):\n{axes}\n\n"
@@ -277,6 +279,15 @@ def _build_prompt(
         "add NO publication-type, study-design or date filters. "
         "The trials_query is plain keywords for ClinicalTrials.gov — NO field tags, "
         "quotes or boolean operators. The rationale says what gap the question fills."
+    )
+
+
+def _context_block(preferences: RequestPreferences) -> str:
+    if not preferences.context:
+        return ""
+    return (
+        f"{preferences.context} Keep every question feasible for this user: scope it "
+        "to their time, team and skills.\n\n"
     )
 
 

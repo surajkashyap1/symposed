@@ -108,3 +108,18 @@ def test_clinicaltrials_completes_by_filter(tmp_path):
         seen["params"]["filter.advanced"]
         == "AREA[PrimaryCompletionDate]RANGE[MIN,2027-09-25]"
     )
+
+
+def test_pubmed_year_filter_always_sends_both_ends(tmp_path):
+    seen = []
+
+    def handler(request):
+        seen.append(dict(request.url.params))
+        return httpx.Response(200, json={"esearchresult": {"count": "3"}})
+
+    client = PubMedClient(http=http_for(handler, tmp_path))
+    client.count("x", min_year=2023)
+    client.count("y", max_year=2010)
+    assert (seen[0]["mindate"], seen[0]["maxdate"]) == ("2023", "3000")
+    assert (seen[1]["mindate"], seen[1]["maxdate"]) == ("1800", "2010")
+    assert seen[0]["datetype"] == "pdat"

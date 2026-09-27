@@ -151,11 +151,12 @@ class PubMedClient:
         """Number of PubMed records matching `query` (optionally bounded by pub year)."""
         params = {**self._base_params(), "term": query, "rettype": "count"}
         if min_year is not None or max_year is not None:
+            # E-utilities silently IGNORES a date range unless both ends are set
+            # (verified live: min-only returned the all-time count), so an open
+            # end is sent explicitly.
             params["datetype"] = "pdat"
-            if min_year is not None:
-                params["mindate"] = str(min_year)
-            if max_year is not None:
-                params["maxdate"] = str(max_year)
+            params["mindate"] = str(min_year if min_year is not None else 1800)
+            params["maxdate"] = str(max_year if max_year is not None else 3000)
         data = self.http.get_json(ESEARCH_URL, params, validate=_has_count)
         return int(data["esearchresult"]["count"])
 

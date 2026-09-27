@@ -101,7 +101,8 @@ def test_retrieve_end_to_end(tmp_path):
     result = retrieve(pubmed, "vitamin d sepsis", max_records=10)
     assert [p.pmid for p in result.papers] == ["111", "222"]
     assert result.papers[0].doi == "10.1/own"
-    assert result.as_dict() == {"query": "vitamin d sepsis", "count": 2}
+    d = result.as_dict()
+    assert (d["query"], d["count"], d["fetched"]) == ("vitamin d sepsis", 2, 2)
 
 
 def test_parser_keeps_issue_year_and_earlier_online_year(tmp_path):

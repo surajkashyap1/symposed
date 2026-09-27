@@ -83,7 +83,16 @@ v1 above was the cut-down slice. We are now aligning it with the full
   per criterion stored, a reviewer override field, and unchosen candidates kept.
 - **A7 — Database schema** (§5 tables, unique normalised-title index) + Sheets sync.
 - **A8 — More sources**: OpenAlex, Semantic Scholar, CORE, WHO ICTRP, Crossref.
-- **A9 — Full 26-section guide** with the verbatim statements (§6).
+- **A9 — Full 26-section guide** ✅ (`guide_content.py` + `guide.py`): sections in
+  the spec's order, verbatim novelty statement, registration urgency and
+  disclaimers plus the website's acknowledgement and AI note. Built by code:
+  PICO, feasibility, papers table, RoB tool and reporting guideline for the
+  design, PRISMA counts, timeline from the user's hours, search appendix.
+  Written by the model and checked by code: search strategies (each run in
+  PubMed for a real count; MeSH terms looked up; a zero-record strategy is
+  never recommended), protocol (may cite only supplied records; invented
+  citation numbers are removed), PROSPERO entry. Literature and narrative
+  reviews get their own section set. Reviewer warnings go to results.json.
 - **A10 — Stage 6 verification screen + weekly batch scheduler.**
 
 Model (decided 2026-09-25): **Claude Sonnet 5 for every task**, reasoning effort
@@ -151,8 +160,7 @@ python -m guide_pipeline candidates "vitamin d deficiency in critically ill adul
                                                            # LLM candidate titles, count-gated and ranked
 python -m guide_pipeline retrieve "vitamin D[tiab] AND critically ill[tiab] AND randomized[tiab]"  # Step 4:
                                                            # full records + abstracts, deduped, use-tagged
-python -m guide_pipeline guide "Vitamin D in the critically ill" -- "vitamin D[tiab] AND critically ill[tiab]"
-                                                           # Step 5: writes output/<request>/guide.docx + results.json
+# the old `guide "<title>" -- "<query>"` command was replaced by `run` (below)
 ```
 
 ## Run a whole request

@@ -76,8 +76,23 @@ def stubbed(monkeypatch):
                                full_text_screened=1,
                                counts={LIKELY_ELIGIBLE: 1, UNCLEAR: len(items) - 1})
 
+    def fake_assemble(**kw):
+        calls["assembled_title"] = kw["title"]
+        return SimpleNamespace(
+            warnings=["check MeSH"], prospero=None, similar=[], rob_tool="RoB 2",
+            timeline=[],
+            strategies={"strategies": [SimpleNamespace(name="S", pubmed_query="q", count=7,
+                                                       unverified_mesh=[])],
+                        "recommended": 0, "embase_emtree": "", "cochrane_central": ""})
+
+    def fake_build_guide(workspace, content, **kw):
+        workspace.guide_path.write_text("guide")
+        return str(workspace.guide_path)
+
     monkeypatch.setattr(run_mod, "retrieve", fake_retrieve)
     monkeypatch.setattr(run_mod, "screen_papers", fake_screen)
+    monkeypatch.setattr(run_mod, "assemble", fake_assemble)
+    monkeypatch.setattr(run_mod, "build_guide", fake_build_guide)
     return calls
 
 
@@ -113,6 +128,8 @@ def test_found_run_writes_guide_results_and_metrics(tmp_path, monkeypatch, stubb
     report = run(tmp_path, monkeypatch, found())
     assert report.outcome == FOUND and report.title == "Winner"
     assert report.guide_path.endswith("guide.docx")
+    assert stubbed["assembled_title"] == "Winner"
+    assert report.metrics["guide_warnings"] == 1 and report.metrics["strategy_counts"] == [7]
     assert stubbed["query"].startswith("(heart failure[tiab]) NOT (review[pt]")  # SR filter
     assert stubbed["max_records"] == 400  # team of 2 ("1 other person")
 

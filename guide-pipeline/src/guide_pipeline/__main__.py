@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 
 from .candidates import TOPIC_ANY, TOPIC_EXACT, TOPIC_SPECIALTY, RequestPreferences, screen_candidates
 from .gates import LIGHTER_TYPES, SYSTEMATIC
-from .guide import build_guide
 from .landscape import assess_landscape
 from .llm import LLMClient, LLMError, UsageMeter, build_llm, task_config
 from .prospero import (
@@ -25,7 +24,7 @@ from .retrieval import retrieve
 from .request import from_proforma
 from .run import run_request, summarise_metrics
 from .recall import Fixture, append_history, run_consistency, run_recall
-from .screening import STATUSES, screen_papers, write_criteria
+from .screening import STATUSES
 from .settings import Settings
 from .sources import build_sources
 from .workspace import create_workspace
@@ -246,66 +245,6 @@ def retrieve_cmd(query: str) -> int:
     return 0
 
 
-def guide_cmd(title: str, query: str, *, publication_type: str = SYSTEMATIC,
-              limit: int | None = None) -> int:
-    """Criteria, retrieval, full-recall screening, then guide.docx + results.json."""
-    settings = Settings.load()
-    sources = build_sources(settings)
-    meter = UsageMeter()
-    llms = {t: _llm(settings, t, meter) for t in
-            ("criteria_writing", "attribute_extraction", "screening", "outcome_grouping")}
-    if any(v is None for v in llms.values()):
-        return 2
-    print(f'Building guide: "{title}"\n  query: {query}\n')
-    try:
-        criteria = write_criteria(llms["criteria_writing"], title,
-                                  publication_type=publication_type)
-        print("  Criteria:\n    " + criteria.as_text().replace("\n", "\n    "))
-        retrieval = retrieve(sources.pubmed, query,
-                             max_records=settings.thresholds.max_records_to_screen)
-        papers = retrieval.papers[:limit] if limit else retrieval.papers
-        print(f"\n  Screening {len(papers)} of {len(retrieval.papers)} retrieved papers "
-              f"({settings.llm_concurrency} at a time)...")
-        screening = screen_papers(
-            llms["attribute_extraction"], llms["screening"], criteria, papers,
-            europepmc=sources.europepmc,
-            grouping_llm=llms["outcome_grouping"],
-            heterogeneity_threshold=settings.thresholds.heterogeneity_max_outcomes,
-            fulltext_max_chars=settings.fulltext_max_chars,
-            concurrency=settings.llm_concurrency,
-        )
-    except LLMError as exc:
-        print(f"  LLM error: {exc}")
-        _print_cost(meter)
-        return 1
-
-    search_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    workspace = create_workspace(title, base=settings.output_dir)
-    workspace.write_results({
-        "title": title,
-        "search_date": search_date,
-        "publication_type": publication_type,
-        **retrieval.as_dict(),
-        "screened": len(papers),
-        **screening.as_dict(),
-        "model_cost_usd": round(meter.cost_usd, 4),
-    })
-    path = build_guide(workspace, title, retrieval, screening, search_date=search_date)
-    print()
-    for status in STATUSES:
-        print(f"  {status:<26} {screening.counts.get(status, 0):>4}")
-    print(f"  full text read for {screening.full_text_screened}; "
-          f"{len(screening.unclear_without_open_access())} to fetch via own access")
-    h = screening.heterogeneity
-    if h is not None:
-        print(f"  distinct primary outcomes: {h.distinct_outcomes} "
-              f"({'FLAG' if h.flagged else 'ok'}, threshold {h.threshold})")
-    print(f"  Wrote {path}")
-    print(f"  Wrote {workspace.results_path}")
-    _print_cost(meter)
-    return 0
-
-
 def prospero_cmd(args: list[str]) -> int:
     """PROSPERO mirror admin (spec section 3)."""
     if not args:
@@ -403,7 +342,8 @@ def prospero_cmd(args: list[str]) -> int:
 
 HISTORY = "recall_fixtures/history.jsonl"
 RUN_TASKS = ("candidate_generation", "criteria_writing", "attribute_extraction",
-             "screening", "outcome_grouping", "tie_break")
+             "screening", "outcome_grouping", "tie_break", "search_strategy",
+             "protocol_drafting", "prospero_form")
 
 
 def run_cmd(path: str, limit: int | None = None) -> int:
@@ -605,27 +545,8 @@ def main(argv: list[str] | None = None) -> int:
     if argv and argv[0] == "prospero":
         return prospero_cmd(argv[1:])
     if argv and argv[0] == "guide":
-        usage = ('Usage: python -m guide_pipeline guide "<title>" -- "<pubmed query>" '
-                 '[--type "scoping review"] [--limit N]')
-        rest = argv[1:]
-        pub_type, limit = SYSTEMATIC, None
-        if "--type" in rest:
-            i = rest.index("--type")
-            pub_type = rest[i + 1].lower() if i + 1 < len(rest) else SYSTEMATIC
-            rest = rest[:i] + rest[i + 2:]
-        if "--limit" in rest:
-            i = rest.index("--limit")
-            limit = int(rest[i + 1]) if i + 1 < len(rest) else None
-            rest = rest[:i] + rest[i + 2:]
-        if "--" not in rest:
-            print(usage)
-            return 2
-        sep = rest.index("--")
-        title, query = " ".join(rest[:sep]), " ".join(rest[sep + 1:])
-        if not title or not query:
-            print(usage)
-            return 2
-        return guide_cmd(title, query, publication_type=pub_type, limit=limit)
+        print("The guide command was replaced by: python -m guide_pipeline run <request.json>")
+        return 2
     return doctor()
 
 

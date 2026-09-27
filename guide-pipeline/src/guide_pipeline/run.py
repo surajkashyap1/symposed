@@ -31,6 +31,7 @@ from .candidates import (
 )
 from .gates import SYSTEMATIC, records_cap
 from .guide import build_guide
+from .guide_content import assemble
 from .landscape import Landscape, assess_landscape
 from .llm import LLMClient, UsageMeter
 from .prospero import ProsperoMirror
@@ -85,6 +86,7 @@ class RunReport:
     seconds: dict[str, float] = field(default_factory=dict)
     metrics: dict[str, Any] = field(default_factory=dict)
     selection: Optional[Selection] = None
+    content: Any = None  # GuideContent, once the guide is written
 
 
 def _gate_counts(screen: ScreenResult) -> dict[str, dict[str, int]]:
@@ -133,6 +135,9 @@ def build_metrics(report: RunReport, meter: UsageMeter, settings: Settings) -> d
         "publication_type_delivered": report.publication_type or None,
         "tied_candidates": len(report.selection.tied) if report.selection else 0,
         "tie_break_used": bool(report.selection and report.selection.tie_break),
+        "guide_warnings": len(report.content.warnings) if report.content else None,
+        "strategy_counts": ([st.count for st in report.content.strategies["strategies"]]
+                            if report.content else None),
         "winner_score": report.selection.winner.total if report.selection and report.selection.winner else None,
         # stage 5: retrieval and screening
         "papers_retrieved": len(report.retrieval.papers) if report.retrieval else 0,
@@ -288,9 +293,15 @@ def run_request(
     report.retrieval, report.screening = retrieval, screening
     say(f"Chosen question ({top.candidate.axis}): {report.title}")
     search_date = today.strftime("%Y-%m-%d")
-    report.guide_path = timed("guide", lambda: build_guide(
-        workspace, report.title, retrieval, screening,
-        search_date=search_date, landscape=landscape))
+    say("Writing the guide (search strategies, protocol, PROSPERO entry)...")
+    content = timed("guide", lambda: assemble(
+        title=report.title, publication_type=report.publication_type, criteria=criteria,
+        assessment=top, retrieval=retrieval, screening=screening, preferences=prefs,
+        proforma=request.proforma, search_date=search_date, pubmed=sources.pubmed,
+        llms=llms, screened_all=len(screening.papers) >= len(retrieval.papers)))
+    report.content = content
+    report.guide_path = timed("guide", lambda: build_guide(workspace, content,
+                                                           landscape=landscape))
     _finish(report, meter, settings, extra={
         "search_date": search_date,
         "title": report.title,
@@ -300,6 +311,19 @@ def run_request(
         "prospero_check": top.prospero.as_dict(),
         "searches_run": [s.__dict__ for s in top.searches],
         "selection": selection.as_dict(),
+        "guide": {
+            "warnings_for_reviewer": content.warnings,
+            "strategies": [{"name": st.name, "pubmed_query": st.pubmed_query,
+                            "count": st.count, "unverified_mesh": st.unverified_mesh}
+                           for st in content.strategies["strategies"]],
+            "recommended_strategy": content.strategies["recommended"],
+            "embase_emtree": content.strategies["embase_emtree"],
+            "cochrane_central": content.strategies["cochrane_central"],
+            "prospero_entry": content.prospero,
+            "similar_work": content.similar,
+            "rob_tool": content.rob_tool,
+            "timeline": [m.__dict__ for m in content.timeline],
+        },
         **retrieval.as_dict(),
         **screening.as_dict(),
     })

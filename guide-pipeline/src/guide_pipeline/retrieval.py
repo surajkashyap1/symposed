@@ -20,10 +20,13 @@ _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 @dataclass(frozen=True)
 class RetrievalResult:
     query: str
-    papers: list[Paper]
+    papers: list[Paper]  # deduplicated
+    identified: int = 0  # PubMed's total for the query (may exceed what was fetched)
+    fetched: int = 0  # records fetched before duplicates were removed
 
     def as_dict(self) -> dict:
-        return {"query": self.query, "count": len(self.papers)}
+        return {"query": self.query, "count": len(self.papers),
+                "identified": self.identified, "fetched": self.fetched}
 
 
 def _title_key(paper: Paper) -> str:
@@ -56,6 +59,9 @@ def dedupe(papers: list[Paper]) -> list[Paper]:
 
 
 def retrieve(pubmed: PubMedClient, query: str, *, max_records: int = 400) -> RetrievalResult:
-    """Search, fetch full records, dedupe."""
+    """Search, fetch full records, dedupe (counts kept for the PRISMA diagram)."""
+    identified = pubmed.count(query)
     pmids = pubmed.search_pmids(query, retmax=max_records)
-    return RetrievalResult(query=query, papers=dedupe(pubmed.fetch_details(pmids)))
+    fetched = pubmed.fetch_details(pmids)
+    return RetrievalResult(query=query, papers=dedupe(fetched), identified=identified,
+                           fetched=len(fetched))

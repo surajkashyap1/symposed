@@ -209,3 +209,11 @@ def test_tied_candidates_are_each_screened_then_tie_broken(tmp_path, monkeypatch
     sel = json.loads(report.workspace.results_path.read_text())["selection"]
     assert sel["tie_break"]["model_choice"] == 1 and sel["unchosen"] == ["Alpha"]
     assert len(sel["rescored"]) == 2
+
+
+def test_output_folder_is_named_after_the_chosen_question(tmp_path, monkeypatch, stubbed):
+    near = assessment("Near-identical", "pass", eligible=30)
+    weak = assessment("Weak", "pass", axis="Timing or dose", eligible=300)
+    report = run(tmp_path, monkeypatch, ScreenResult([near, weak], [weak, near], weak,
+                                                     batches=1, outcome=FOUND))
+    assert "near-identical" in report.workspace.dir.name

@@ -74,7 +74,7 @@ def _git_version() -> str:
 class RunReport:
     request: GuideRequest
     outcome: str
-    workspace: Workspace
+    workspace: Optional[Workspace]  # created once the chosen question is known
     screen: ScreenResult
     title: str = ""
     publication_type: str = ""
@@ -197,15 +197,12 @@ def run_request(
         mirror_max_age_days=settings.prospero_max_age_days, preferences=prefs,
     ))
     label = request.order_id or "request"
-    workspace = create_workspace(
-        screen.top.candidate.title if screen.top else f"{label} needs contact",
-        base=settings.output_dir,
-    )
-    report = RunReport(request, screen.outcome, workspace, screen, landscape=landscape,
+    report = RunReport(request, screen.outcome, None, screen, landscape=landscape,
                        seconds=seconds)
 
     if screen.outcome == NEEDS_CONTACT or screen.top is None:
         say(f"Nothing fits the stated requirements: {screen.contact_reason}")
+        report.workspace = create_workspace(f"{label} needs contact", base=settings.output_dir)
         _finish(report, meter, settings, extra={"contact_reason": screen.contact_reason})
         return report
 
@@ -286,6 +283,8 @@ def run_request(
     top = winner.assessment
     _, criteria, retrieval, screening = deep[top.candidate.title]
     report.title = top.candidate.title
+    # Named after the question actually chosen, which scoring may have changed.
+    workspace = report.workspace = create_workspace(report.title, base=settings.output_dir)
     report.retrieval, report.screening = retrieval, screening
     say(f"Chosen question ({top.candidate.axis}): {report.title}")
     search_date = today.strftime("%Y-%m-%d")

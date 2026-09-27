@@ -23,6 +23,7 @@ SAMPLE_XML = """<?xml version="1.0"?>
     <Journal><Title>J Test</Title>
       <JournalIssue><PubDate><Year>2021</Year></PubDate></JournalIssue>
     </Journal>
+    <ArticleDate DateType="Electronic"><Year>2019</Year><Month>05</Month></ArticleDate>
    </Article>
   </MedlineCitation>
   <PubmedData>
@@ -101,3 +102,10 @@ def test_retrieve_end_to_end(tmp_path):
     assert [p.pmid for p in result.papers] == ["111", "222"]
     assert result.papers[0].doi == "10.1/own"
     assert result.as_dict() == {"query": "vitamin d sepsis", "count": 2}
+
+
+def test_parser_keeps_issue_year_and_earlier_online_year(tmp_path):
+    pubmed = pubmed_for(search_and_fetch_handler, tmp_path)
+    first, second = pubmed.fetch_details(["111", "222"])
+    assert (first.year, first.epub_year, first.first_published_year) == (2021, 2019, 2019)
+    assert (second.epub_year, second.first_published_year) == (None, 2019)

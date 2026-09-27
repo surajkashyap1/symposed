@@ -160,7 +160,11 @@ def _attributes(data: dict, paper: Paper) -> dict:
     attrs = {f: data.get(f, NOT_STATED) for f in ATTRIBUTE_FIELDS}
     if not isinstance(attrs["outcomes"], list):
         attrs["outcomes"] = []
-    attrs["year"] = paper.year  # from the PubMed record, never the model
+    # Years come from the PubMed record, never the model.
+    attrs["year"] = paper.year
+    if paper.epub_year and paper.epub_year != paper.year:
+        attrs["year"] = (f"first published online {paper.epub_year}; "
+                         f"journal issue {paper.year}")
     return attrs
 
 

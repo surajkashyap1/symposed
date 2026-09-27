@@ -43,8 +43,17 @@ class Paper:
     abstract: str
     authors: tuple[str, ...]
     journal: str
-    year: Optional[int]
+    year: Optional[int]  # journal issue year (used in citations)
     doi: Optional[str]
+    # Electronic publication year, when earlier than the issue: papers can sit
+    # online for years before print (seen: online 2020, issue 2023). Date-window
+    # eligibility usually goes by first publication.
+    epub_year: Optional[int] = None
+
+    @property
+    def first_published_year(self) -> Optional[int]:
+        years = [y for y in (self.year, self.epub_year) if y]
+        return min(years) if years else None
 
 
 def _has_count(resp: CachedResponse) -> bool:
@@ -101,6 +110,13 @@ def _parse_article(art: ET.Element) -> Optional[Paper]:
             if match:
                 year = int(match.group())
 
+    epub_year: Optional[int] = None
+    for adate in article.findall("./ArticleDate"):
+        y = adate.findtext("./Year")
+        if y and y.strip().isdigit():
+            epub_year = int(y.strip())
+            break
+
     authors: list[str] = []
     for a in article.findall("./AuthorList/Author"):
         last = a.findtext("./LastName")
@@ -123,6 +139,7 @@ def _parse_article(art: ET.Element) -> Optional[Paper]:
         journal=journal,
         year=year,
         doi=doi,
+        epub_year=epub_year,
     )
 
 

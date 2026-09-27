@@ -232,3 +232,11 @@ def test_screen_papers_keeps_papers_whose_extraction_failed():
     assert [s.paper.pmid for s in result.papers] == ["1", "2", "3"]  # order kept
     assert [s.status for s in result.papers] == [LIKELY_ELIGIBLE, UNCLEAR, LIKELY_ELIGIBLE]
     assert result.papers[1].evidence_basis == NOT_ASSESSED
+
+
+def test_screen_sees_online_and_issue_years():
+    llm = RoutedLLM()
+    p = Paper("7", "T", "abs", (), "J", 2023, None, epub_year=2020)
+    s = screen_paper(llm, llm, CRIT, p)
+    assert s.attributes["year"] == "first published online 2020; journal issue 2023"
+    assert "first published online 2020" in llm.calls[1]["user"]

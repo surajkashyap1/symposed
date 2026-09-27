@@ -31,10 +31,16 @@ from .sources import build_sources
 from .workspace import create_workspace
 
 
+# Set by --sync: per-paper steps run as parallel calls (fast, full price)
+# instead of through the Batch API (half price, minutes to hours).
+_SYNC = False
+
+
 def _llm(settings: Settings, task: str, meter: UsageMeter) -> LLMClient | None:
     """The configured client for `task`, or None (with a message) if unusable."""
     try:
-        return build_llm(settings, task, meter=meter)
+        return build_llm(settings, task, meter=meter, batch=False if _SYNC else None,
+                         progress=lambda m: print(f"    {m}", flush=True))
     except LLMError as exc:
         print(f"  {exc} (see .env.example)")
         return None
@@ -423,7 +429,9 @@ def run_cmd(path: str, limit: int | None = None) -> int:
     print(f"  {prefs.publication_type} "
           f"({'type flexible' if prefs.type_flexible else 'type strict'}), "
           f"topic {'BLANK' if request.blank_topic else repr(request.topic)} "
-          f"(flexibility: {prefs.topic_flexibility}), team of {prefs.collaborators}\n")
+          f"(flexibility: {prefs.topic_flexibility}), team of {prefs.collaborators}")
+    batch = settings.llm_batch and not _SYNC and settings.llm_provider == "anthropic"
+    print(f"  per-paper steps: {'Batch API (half price)' if batch else 'parallel calls'}\n")
     mirror = ProsperoMirror(settings.prospero_db)
     try:
         report = run_request(request, settings=settings, sources=sources, mirror=mirror,
@@ -536,7 +544,11 @@ def consistency_cmd(path: str, papers: int = 5) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global _SYNC
     argv = sys.argv[1:] if argv is None else argv
+    if "--sync" in argv:
+        _SYNC = True
+        argv = [a for a in argv if a != "--sync"]
     if argv and argv[0] == "counts":
         if len(argv) < 2:
             print('Usage: python -m guide_pipeline counts "<query>"')
@@ -570,7 +582,7 @@ def main(argv: list[str] | None = None) -> int:
             limit = int(rest[i + 1])
             rest = rest[:i] + rest[i + 2:]
         if not rest:
-            print("Usage: python -m guide_pipeline run <request.json> [--limit N]")
+            print("Usage: python -m guide_pipeline run <request.json> [--limit N] [--sync]")
             return 2
         return run_cmd(rest[0], limit=limit)
     if argv and argv[0] == "metrics":

@@ -123,11 +123,12 @@ class UsageMeter:
     unpriced_models: set[str] = field(default_factory=set)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
-    def record(self, model: str, task: str, usage: Any) -> None:
+    def record(self, model: str, task: str, usage: Any, *, discount: float = 1.0) -> None:
+        """`discount` scales the price (0.5 for Batch API requests)."""
         with self._lock:  # calls run concurrently during screening
-            self._record(model, task, usage)
+            self._record(model, task, usage, discount)
 
-    def _record(self, model: str, task: str, usage: Any) -> None:
+    def _record(self, model: str, task: str, usage: Any, discount: float) -> None:
         inp = getattr(usage, "input_tokens", 0) or 0
         out = getattr(usage, "output_tokens", 0) or 0
         cw = getattr(usage, "cache_creation_input_tokens", 0) or 0
@@ -142,7 +143,7 @@ class UsageMeter:
             self.unpriced_models.add(model)
             return
         p_in, p_out = price
-        cost = (inp * p_in + out * p_out + cw * p_in * 1.25 + cr * p_in * 0.1) / 1_000_000
+        cost = discount * (inp * p_in + out * p_out + cw * p_in * 1.25 + cr * p_in * 0.1) / 1_000_000
         self.cost_usd += cost
         self.by_task[task] = self.by_task.get(task, 0.0) + cost
 
@@ -172,6 +173,41 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise LLMError("Model JSON was not an object")
     return data
+
+
+@dataclass(frozen=True)
+class JsonCall:
+    """One complete_json request, for running many at once."""
+
+    system: str
+    user: str
+    schema: Optional[dict] = None
+    cache_system: bool = False
+
+
+def run_many(
+    llm: LLMClient, calls: list[JsonCall], *, concurrency: int = 4
+) -> list[dict[str, Any] | LLMError]:
+    """Run independent calls; each result is the parsed JSON or the LLMError.
+
+    Clients that can batch (Claude's Message Batches API) do so; otherwise the
+    calls run in parallel threads. Order always matches `calls`.
+    """
+    many = getattr(llm, "complete_json_many", None)
+    if many is not None:
+        return many(calls)
+
+    def one(call: JsonCall) -> dict[str, Any] | LLMError:
+        try:
+            return llm.complete_json(call.system, call.user, schema=call.schema,
+                                     cache_system=call.cache_system)
+        except LLMError as exc:
+            return exc
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
+        return list(pool.map(one, calls))
 
 
 @dataclass
@@ -284,6 +320,14 @@ class AnthropicClient:
     max_tokens: int = 16000
     client: Any = None  # anthropic.Anthropic, injectable for tests
     meter: Optional[UsageMeter] = None
+    # Message Batches API for complete_json_many: half price, results within
+    # 24 hours (usually minutes). Off = parallel synchronous calls.
+    batch: bool = False
+    concurrency: int = 4
+    poll_seconds: float = 30.0
+    batch_timeout_seconds: float = 24 * 3600
+    sleep: Callable[[float], None] = field(default=time.sleep, repr=False)
+    progress: Optional[Callable[[str], None]] = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         # Built up front, not lazily: screening calls this from several threads.
@@ -295,39 +339,27 @@ class AnthropicClient:
     def _sdk(self) -> Any:
         return self.client
 
-    def complete_json(
-        self,
-        system: str,
-        user: str,
-        *,
-        schema: Optional[dict] = None,
-        cache_system: bool = False,
-    ) -> dict[str, Any]:
+    def _params(self, call: JsonCall) -> dict[str, Any]:
+        """Request parameters, identical for synchronous and batch requests."""
         output_config: dict[str, Any] = {"effort": self.effort}
-        system_param: Any = system
-        if cache_system:
-            system_param = [
-                {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
-            ]
-        if schema is not None:
-            output_config["format"] = {"type": "json_schema", "schema": schema}
-        import anthropic  # noqa: F401  (typed errors below)
+        if call.schema is not None:
+            output_config["format"] = {"type": "json_schema", "schema": call.schema}
+        system: Any = call.system
+        if call.cache_system:
+            system = [{"type": "text", "text": call.system,
+                       "cache_control": {"type": "ephemeral"}}]
+        return {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "system": system,
+            "messages": [{"role": "user", "content": call.user}],
+            "thinking": {"type": "adaptive"} if self.thinking else {"type": "disabled"},
+            "output_config": output_config,
+        }
 
-        try:
-            response = self._sdk().messages.create(
-                model=self.model,
-                max_tokens=self.max_tokens,
-                system=system_param,
-                messages=[{"role": "user", "content": user}],
-                thinking={"type": "adaptive"} if self.thinking else {"type": "disabled"},
-                output_config=output_config,
-            )
-        except anthropic.APIConnectionError as exc:
-            raise LLMError(f"Anthropic unreachable: {exc}") from exc
-        except anthropic.APIStatusError as exc:
-            raise LLMError(f"Anthropic HTTP {exc.status_code}: {exc.message}") from exc
+    def _read(self, response: Any, *, discount: float = 1.0) -> dict[str, Any]:
         if self.meter is not None:
-            self.meter.record(self.model, self.task, response.usage)
+            self.meter.record(self.model, self.task, response.usage, discount=discount)
         if response.stop_reason == "refusal":
             details = getattr(response, "stop_details", None)
             raise LLMError(f"Model refused ({getattr(details, 'category', None)})")
@@ -336,9 +368,84 @@ class AnthropicClient:
         text = next((b.text for b in response.content if b.type == "text"), "")
         return _parse_json_object(text)
 
+    def complete_json(
+        self,
+        system: str,
+        user: str,
+        *,
+        schema: Optional[dict] = None,
+        cache_system: bool = False,
+    ) -> dict[str, Any]:
+        import anthropic
+
+        params = self._params(JsonCall(system, user, schema, cache_system))
+        try:
+            response = self._sdk().messages.create(**params)
+        except anthropic.APIConnectionError as exc:
+            raise LLMError(f"Anthropic unreachable: {exc}") from exc
+        except anthropic.APIStatusError as exc:
+            raise LLMError(f"Anthropic HTTP {exc.status_code}: {exc.message}") from exc
+        return self._read(response)
+
+    def complete_json_many(self, calls: list[JsonCall]) -> list[dict[str, Any] | LLMError]:
+        if not calls:
+            return []
+        if not self.batch:
+            return run_many(_Sync(self), calls, concurrency=self.concurrency)
+        import anthropic
+
+        requests = [{"custom_id": f"c{i}", "params": self._params(c)}
+                    for i, c in enumerate(calls)]
+        try:
+            batch = self._sdk().messages.batches.create(requests=requests)
+            waited = 0.0
+            while batch.processing_status != "ended":
+                if waited >= self.batch_timeout_seconds:
+                    self._sdk().messages.batches.cancel(batch.id)
+                    raise LLMError(f"batch {batch.id} did not finish in time")
+                if self.progress:
+                    counts = getattr(batch, "request_counts", None)
+                    done = getattr(counts, "succeeded", 0) + getattr(counts, "errored", 0)
+                    self.progress(f"batch {batch.id} ({self.task}): {done}/{len(calls)} done")
+                self.sleep(self.poll_seconds)
+                waited += self.poll_seconds
+                batch = self._sdk().messages.batches.retrieve(batch.id)
+            results: dict[str, dict[str, Any] | LLMError] = {}
+            for item in self._sdk().messages.batches.results(batch.id):
+                kind = item.result.type
+                if kind == "succeeded":
+                    try:
+                        results[item.custom_id] = self._read(item.result.message, discount=0.5)
+                    except LLMError as exc:
+                        results[item.custom_id] = exc
+                else:
+                    results[item.custom_id] = LLMError(f"batch request {kind}")
+        except anthropic.APIConnectionError as exc:
+            raise LLMError(f"Anthropic unreachable: {exc}") from exc
+        except anthropic.APIStatusError as exc:
+            raise LLMError(f"Anthropic HTTP {exc.status_code}: {exc.message}") from exc
+        # Results arrive in any order: key by custom_id, never by position.
+        return [results.get(f"c{i}", LLMError("missing from batch results"))
+                for i in range(len(calls))]
+
+
+@dataclass
+class _Sync:
+    """complete_json only, so run_many uses threads rather than recursing."""
+
+    client: "AnthropicClient"
+
+    def complete_json(self, system, user, *, schema=None, cache_system=False):
+        return self.client.complete_json(system, user, schema=schema, cache_system=cache_system)
+
 
 def build_llm(
-    settings: Settings, task: str = "default", *, meter: Optional[UsageMeter] = None
+    settings: Settings,
+    task: str = "default",
+    *,
+    meter: Optional[UsageMeter] = None,
+    batch: Optional[bool] = None,
+    progress: Optional[Callable[[str], None]] = None,
 ) -> LLMClient:
     """The LLM client for one pipeline task, on the configured provider."""
     if settings.llm_provider == "groq":
@@ -364,5 +471,9 @@ def build_llm(
             thinking=cfg.thinking,
             task=task,
             meter=meter,
+            batch=settings.llm_batch if batch is None else batch,
+            concurrency=settings.llm_concurrency,
+            poll_seconds=settings.batch_poll_seconds,
+            progress=progress,
         )
     raise LLMError(f"Unknown LLM_PROVIDER: {settings.llm_provider!r}")

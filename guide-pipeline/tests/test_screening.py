@@ -217,3 +217,18 @@ def test_screening_prompt_treats_marginal_mismatches_as_unclear():
     system = _screen_system(CRIT)
     assert "Partial or marginal mismatches are NOT clear failures" in system
     assert "outcome reported but not as the primary outcome" in system
+
+
+def test_screen_papers_keeps_papers_whose_extraction_failed():
+    class FailOne(RoutedLLM):
+        def complete_json(self, system, user, schema=None, cache_system=False):
+            if schema is ATTRIBUTES_SCHEMA and "Broken" in user:
+                raise LLMError("expired")
+            return super().complete_json(system, user, schema, cache_system)
+
+    llm = FailOne(status=LIKELY_ELIGIBLE)
+    result = screen_papers(llm, llm, CRIT, [paper("1"), paper("2", title="Broken"), paper("3")],
+                           concurrency=1)
+    assert [s.paper.pmid for s in result.papers] == ["1", "2", "3"]  # order kept
+    assert [s.status for s in result.papers] == [LIKELY_ELIGIBLE, UNCLEAR, LIKELY_ELIGIBLE]
+    assert result.papers[1].evidence_basis == NOT_ASSESSED

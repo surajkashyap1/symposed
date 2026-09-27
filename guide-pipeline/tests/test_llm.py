@@ -7,8 +7,10 @@ from guide_pipeline.llm import (
     AnthropicClient,
     GroqClient,
     LLMError,
+    JsonCall,
     UsageMeter,
     build_llm,
+    run_many,
     task_config,
 )
 from guide_pipeline.settings import Settings
@@ -274,3 +276,84 @@ def test_usage_meter_is_thread_safe():
     with ThreadPoolExecutor(8) as pool:
         list(pool.map(lambda _: meter.record("claude-sonnet-5", "t", usage), range(400)))
     assert meter.calls == 400 and meter.input_tokens == 400
+
+
+class FakeBatches:
+    """Stands in for client.messages.batches: ends after `polls` retrievals."""
+
+    def __init__(self, outcomes, polls=2):
+        self.outcomes, self.polls, self.created = outcomes, polls, None
+
+    def create(self, requests):
+        self.created = requests
+        return SimpleNamespace(id="b1", processing_status="in_progress",
+                               request_counts=SimpleNamespace(succeeded=0, errored=0))
+
+    def retrieve(self, batch_id):
+        self.polls -= 1
+        status = "ended" if self.polls <= 0 else "in_progress"
+        return SimpleNamespace(id=batch_id, processing_status=status,
+                               request_counts=SimpleNamespace(succeeded=1, errored=0))
+
+    def results(self, batch_id):
+        # deliberately out of order: results must be keyed by custom_id
+        for custom_id, outcome in reversed(list(self.outcomes.items())):
+            if isinstance(outcome, str):
+                yield SimpleNamespace(custom_id=custom_id,
+                                      result=SimpleNamespace(type=outcome))
+            else:
+                yield SimpleNamespace(custom_id=custom_id,
+                                      result=SimpleNamespace(type="succeeded", message=outcome))
+
+
+def batch_client(batches, meter=None):
+    fake = SimpleNamespace(messages=SimpleNamespace(batches=batches))
+    sleeps = []
+    client = AnthropicClient(api_key="k", model="claude-sonnet-5", client=fake, batch=True,
+                             poll_seconds=5, sleep=sleeps.append, meter=meter, task="screening")
+    return client, sleeps
+
+
+def test_batch_mode_submits_one_batch_and_keys_results_by_id():
+    meter = UsageMeter()
+    batches = FakeBatches({
+        "c0": reply('{"a": 0}', inp=1_000_000, out=0),
+        "c1": "errored",
+        "c2": reply('{"a": 2}', inp=1_000_000, out=0),
+    })
+    client, sleeps = batch_client(batches, meter)
+    calls = [JsonCall("sys", f"u{i}", SCHEMA, cache_system=True) for i in range(3)]
+    out = run_many(client, calls)
+    assert out[0] == {"a": 0} and out[2] == {"a": 2}
+    assert isinstance(out[1], LLMError) and "errored" in str(out[1])
+    assert [r["custom_id"] for r in batches.created] == ["c0", "c1", "c2"]
+    params = batches.created[0]["params"]
+    assert params["system"][0]["cache_control"] == {"type": "ephemeral"}
+    assert params["output_config"]["format"]["schema"] == SCHEMA
+    assert sleeps == [5, 5]  # polled until ended
+    assert meter.cost_usd == pytest.approx(2.0)  # 2M input tokens at half of $2/M
+
+
+def test_batch_timeout_cancels():
+    class Never(FakeBatches):
+        cancelled = False
+
+        def retrieve(self, batch_id):
+            return SimpleNamespace(id=batch_id, processing_status="in_progress",
+                                   request_counts=SimpleNamespace(succeeded=0, errored=0))
+
+        def cancel(self, batch_id):
+            Never.cancelled = True
+
+    client, _ = batch_client(Never({}))
+    client.batch_timeout_seconds = 10
+    with pytest.raises(LLMError, match="did not finish"):
+        client.complete_json_many([JsonCall("s", "u")])
+    assert Never.cancelled
+
+
+def test_sync_mode_runs_calls_in_parallel_threads():
+    fake = FakeAnthropic(*(reply(f'{{"a": {i}}}') for i in range(3)))
+    client = AnthropicClient(api_key="k", client=fake, batch=False, concurrency=1)
+    out = run_many(client, [JsonCall("s", f"u{i}") for i in range(3)])
+    assert out == [{"a": 0}, {"a": 1}, {"a": 2}] and len(fake.calls) == 3

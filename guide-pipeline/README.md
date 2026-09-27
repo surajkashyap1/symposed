@@ -68,7 +68,11 @@ v1 above was the cut-down slice. We are now aligning it with the full
   guide to `output/metrics.jsonl` (request shape, per-gate outcomes, pass rate,
   axes, papers, full-text share, status counts, cost by task, cost per paper,
   seconds per stage). `metrics` summarises blank-topic vs topic-given runs.
-- **A5b — Batch API** for the per-paper steps (50% cheaper; fits the weekly batch).
+- **A5b — Batch API** ✅: screening runs in two rounds (attributes, then
+  screening), each submitted as one Message Batch at half price. Default for all
+  runs (`LLM_BATCH=true`); `--sync` switches to parallel calls for quick tests.
+  Batches usually finish in minutes, at most 24 hours, well inside the 7-day
+  turnaround. Failed/expired requests in a batch keep their paper as unclear.
 - **A6 — Stage 4b scoring + Stage 5 re-score + 5b tie break** (with override log).
 - **A7 — Database schema** (§5 tables, unique normalised-title index) + Sheets sync.
 - **A8 — More sources**: OpenAlex, Semantic Scholar, CORE, WHO ICTRP, Crossref.

@@ -20,14 +20,13 @@ result never depends on which others were retrieved.
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from typing import Optional
 
 import httpx
 
 from .fulltext import extract_screening_text
-from .llm import LLMClient, LLMError
+from .llm import JsonCall, LLMClient, LLMError, run_many
 from .sources.europepmc import EuropePmcClient
 from .sources.pubmed import Paper
 
@@ -147,20 +146,28 @@ _EXTRACT_SYSTEM = (
 )
 
 
-def extract_attributes(llm: LLMClient, paper: Paper, text: str) -> dict:
-    """Stated study attributes, feeding the screening step."""
+def _extraction_call(text: str) -> JsonCall:
     user = (
         "Extract from this text: study design, population, sample size (the number "
         "stated, with its unit), intervention, comparator, primary outcome, all "
         "outcomes (list), and country or countries.\n\n"
         f"{text}"
     )
-    data = llm.complete_json(_EXTRACT_SYSTEM, user, schema=ATTRIBUTES_SCHEMA)
+    return JsonCall(_EXTRACT_SYSTEM, user, ATTRIBUTES_SCHEMA)
+
+
+def _attributes(data: dict, paper: Paper) -> dict:
     attrs = {f: data.get(f, NOT_STATED) for f in ATTRIBUTE_FIELDS}
     if not isinstance(attrs["outcomes"], list):
         attrs["outcomes"] = []
     attrs["year"] = paper.year  # from the PubMed record, never the model
     return attrs
+
+
+def extract_attributes(llm: LLMClient, paper: Paper, text: str) -> dict:
+    """Stated study attributes, feeding the screening step."""
+    call = _extraction_call(text)
+    return _attributes(llm.complete_json(call.system, call.user, schema=call.schema), paper)
 
 
 # -- screening --------------------------------------------------------------------
@@ -237,6 +244,37 @@ def _abstract_text(paper: Paper) -> str:
     return f"TITLE: {paper.title}\n\nABSTRACT: {paper.abstract or '(no abstract available)'}"
 
 
+def _screening_call(criteria: Criteria, attrs: dict, text: str, basis: str) -> JsonCall:
+    attr_lines = "\n".join(
+        f"{k}: {', '.join(v) if isinstance(v, list) else v}" for k, v in attrs.items()
+    )
+    caution = (
+        "You are reading only the abstract: details reported only in the full "
+        "text must not be inferred.\n\n"
+        if basis == ABSTRACT_BASIS
+        else ""
+    )
+    user = f"{caution}EXTRACTED ATTRIBUTES:\n{attr_lines}\n\nTEXT ({basis}):\n{text}"
+    return JsonCall(_screen_system(criteria), user, SCREEN_SCHEMA, cache_system=True)
+
+
+def _screened(paper: Paper, attrs: dict, data: dict, basis: str,
+              pmcid: Optional[str]) -> ScreenedPaper:
+    status = data.get("status")
+    if status not in STATUSES:
+        raise LLMError(f"unknown status {status!r}")
+    return ScreenedPaper(paper, attrs, status, str(data.get("reason", "")).strip(), basis, pmcid)
+
+
+def _not_assessed(paper: Paper, exc: Exception, pmcid: Optional[str]) -> ScreenedPaper:
+    # Recall first: a paper the model could not assess stays in, for a human.
+    return ScreenedPaper(
+        paper, {"year": paper.year}, UNCLEAR,
+        f"Automated assessment failed ({exc}); screen this paper yourself.",
+        NOT_ASSESSED, pmcid,
+    )
+
+
 def screen_paper(
     extract_llm: LLMClient,
     screen_llm: LLMClient,
@@ -251,33 +289,12 @@ def screen_paper(
     text = text or _abstract_text(paper)
     try:
         attrs = extract_attributes(extract_llm, paper, text)
-        attr_lines = "\n".join(
-            f"{k}: {', '.join(v) if isinstance(v, list) else v}" for k, v in attrs.items()
-        )
-        caution = (
-            "You are reading only the abstract: details reported only in the full "
-            "text must not be inferred.\n\n"
-            if basis == ABSTRACT_BASIS
-            else ""
-        )
-        user = (
-            f"{caution}EXTRACTED ATTRIBUTES:\n{attr_lines}\n\nTEXT ({basis}):\n{text}"
-        )
-        data = screen_llm.complete_json(
-            _screen_system(criteria), user, schema=SCREEN_SCHEMA, cache_system=True
-        )
-        status = data.get("status")
-        if status not in STATUSES:
-            raise LLMError(f"unknown status {status!r}")
-        return ScreenedPaper(paper, attrs, status, str(data.get("reason", "")).strip(),
-                             basis, pmcid)
+        call = _screening_call(criteria, attrs, text, basis)
+        data = screen_llm.complete_json(call.system, call.user, schema=call.schema,
+                                        cache_system=call.cache_system)
+        return _screened(paper, attrs, data, basis, pmcid)
     except LLMError as exc:
-        # Recall first: a paper the model could not assess stays in, for a human.
-        return ScreenedPaper(
-            paper, {"year": paper.year}, UNCLEAR,
-            f"Automated assessment failed ({exc}); screen this paper yourself.",
-            NOT_ASSESSED, pmcid,
-        )
+        return _not_assessed(paper, exc, pmcid)
 
 
 def _full_text_for(
@@ -415,14 +432,42 @@ def screen_papers(
         except httpx.HTTPError:
             pmcids = {}
 
-    def one(paper: Paper) -> ScreenedPaper:
+    # Gather each paper's text first (open-access full text where available).
+    inputs = []
+    for paper in papers:
         pmcid = pmcids.get(paper.pmid)
         text, basis = _full_text_for(europepmc, pmcid, fulltext_max_chars)
-        return screen_paper(extract_llm, screen_llm, criteria, paper,
-                            text=text, basis=basis, pmcid=pmcid)
+        inputs.append((paper, text or _abstract_text(paper), basis, pmcid))
 
-    with ThreadPoolExecutor(max_workers=max(1, concurrency)) as pool:
-        screened = list(pool.map(one, papers))  # keeps input order
+    # Round 1: attributes for every paper; round 2: screening for every paper.
+    # Each round is one batch on clients that batch, else parallel calls.
+    extracted = run_many(extract_llm, [_extraction_call(t) for _, t, _, _ in inputs],
+                         concurrency=concurrency)
+    attrs_by_index: dict[int, dict] = {}
+    failures: dict[int, Exception] = {}
+    for i, ((paper, _, _, _), data) in enumerate(zip(inputs, extracted)):
+        if isinstance(data, LLMError):
+            failures[i] = data
+        else:
+            attrs_by_index[i] = _attributes(data, paper)
+    order = sorted(attrs_by_index)
+    screened_data = run_many(
+        screen_llm,
+        [_screening_call(criteria, attrs_by_index[i], inputs[i][1], inputs[i][2]) for i in order],
+        concurrency=concurrency,
+    )
+    results: dict[int, ScreenedPaper] = {}
+    for i, data in zip(order, screened_data):
+        paper, _, basis, pmcid = inputs[i]
+        try:
+            if isinstance(data, LLMError):
+                raise data
+            results[i] = _screened(paper, attrs_by_index[i], data, basis, pmcid)
+        except LLMError as exc:
+            results[i] = _not_assessed(paper, exc, pmcid)
+    for i, exc in failures.items():
+        results[i] = _not_assessed(inputs[i][0], exc, inputs[i][3])
+    screened = [results[i] for i in range(len(inputs))]  # keeps input order
 
     heterogeneity = None
     if grouping_llm is not None:

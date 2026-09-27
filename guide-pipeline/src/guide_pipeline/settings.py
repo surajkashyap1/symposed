@@ -92,7 +92,9 @@ class Settings:
     # step 2 landscape: how many recent years of the publication trend to fetch
     landscape_years: int = 10
     # screening (Stage 5 v2)
-    llm_concurrency: int = 4            # papers screened in parallel
+    llm_concurrency: int = 4            # papers screened in parallel (sync mode)
+    llm_batch: bool = True              # per-paper steps via the Batch API (half price)
+    batch_poll_seconds: float = 30.0    # how often to check a running batch
     fulltext_max_chars: int = 60_000    # cap on open-access full text per paper
     # PROSPERO mirror (spec section 3)
     prospero_db: Path = Path("data/prospero.sqlite")
@@ -116,6 +118,8 @@ class Settings:
             llm_temperature=float(_get("LLM_TEMPERATURE", "0.4") or "0.4"),
             landscape_years=_get_int("LANDSCAPE_YEARS", 10),
             llm_concurrency=_get_int("LLM_CONCURRENCY", 4),
+            llm_batch=(_get("LLM_BATCH", "true") or "true").lower() in ("1", "true", "yes", "on"),
+            batch_poll_seconds=_get_float("BATCH_POLL_SECONDS", 30.0),
             fulltext_max_chars=_get_int("FULLTEXT_MAX_CHARS", 60_000),
             prospero_db=Path(_get("PROSPERO_DB", "data/prospero.sqlite") or "data/prospero.sqlite"),
             prospero_max_age_days=_get_int("PROSPERO_MAX_AGE_DAYS", 10),

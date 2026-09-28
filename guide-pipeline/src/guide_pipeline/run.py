@@ -246,7 +246,9 @@ def run_request(
         query = a.candidate.pubmed_query
         if report.publication_type == SYSTEMATIC:
             query = f"({query}) {FILTER_PRIMARY}"
-        retrieval = timed("retrieval", lambda: retrieve(sources.pubmed, query, max_records=cap))
+        retrieval = timed("retrieval", lambda: retrieve(
+            sources.pubmed, query, max_records=cap, europepmc=sources.europepmc,
+            concept_query=a.candidate.pubmed_query, max_preprints=th.max_preprints))
         papers = retrieval.papers[:limit] if limit else retrieval.papers
         say(f"  screening {len(papers)} of {len(retrieval.papers)} papers...")
         screening = timed("screening", lambda: screen_papers(

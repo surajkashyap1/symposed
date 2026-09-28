@@ -43,7 +43,8 @@ def _format_citation(paper: Paper) -> str:
         who = ", ".join(authors)
     year = f" ({paper.year})" if paper.year else ""
     journal = f" {paper.journal}." if paper.journal else ""
-    ids = f" PMID: {paper.pmid}." if paper.pmid else ""
+    label = "Europe PMC" if paper.is_preprint else "PMID:"
+    ids = f" {label} {paper.pmid}." if paper.pmid else ""
     if paper.doi:
         ids += f" DOI: {paper.doi}."
     return f"{who}{year}. {paper.title}.{journal}{ids}".strip()
@@ -248,6 +249,7 @@ def build_guide(
         pr = c.prisma
         _table(doc, ["Stage", "Records"], [
             ["Identified through PubMed", f"{pr['identified']:,}"],
+            ["Identified through Europe PMC (preprints)", f"{pr.get('preprints_identified', 0):,}"],
             ["Retrieved for our preliminary screen", f"{pr['retrieved']:,}"],
             ["Duplicates removed", f"{pr['duplicates_removed']:,}"],
             ["Titles and abstracts screened", f"{pr['screened']:,}"],

@@ -64,7 +64,8 @@ def stubbed(monkeypatch):
     monkeypatch.setattr(run_mod, "write_criteria",
                         lambda *a, **k: Criteria("adults", "drug", "placebo", "death", "RCTs"))
 
-    def fake_retrieve(pubmed, query, *, max_records):
+    def fake_retrieve(pubmed, query, *, max_records, **kw):
+        calls["concept_query"] = kw.get("concept_query")
         calls["query"], calls["max_records"] = query, max_records
         return RetrievalResult(query, [paper("1"), paper("2"), paper("3")])
 
@@ -132,6 +133,7 @@ def test_found_run_writes_guide_results_and_metrics(tmp_path, monkeypatch, stubb
     assert report.metrics["guide_warnings"] == 1 and report.metrics["strategy_counts"] == [7]
     assert stubbed["query"].startswith("(heart failure[tiab]) NOT (review[pt]")  # SR filter
     assert stubbed["max_records"] == 400  # team of 2 ("1 other person")
+    assert stubbed["concept_query"] == "heart failure[tiab]"  # preprints use concepts
 
     m = report.metrics
     assert m["order_id"] == "order-1" and m["topic_given"] is True

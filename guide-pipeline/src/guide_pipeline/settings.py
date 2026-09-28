@@ -59,6 +59,7 @@ class Thresholds:
     recency_years: int = 5                      # "recent" evidence for the recency score
     score_margin: float = 0.05                  # leader must win by more than this to go alone
     max_tied: int = 3                           # at most this many tied go to deep retrieval
+    max_preprints: int = 50                     # Europe PMC preprints added to retrieval
     prospero_reject_similarity: float = 0.75    # a registered title this similar rejects
     prospero_review_similarity: float = 0.45    # ...this similar is surfaced for human review
 
@@ -81,6 +82,7 @@ class Thresholds:
             recency_years=_get_int("RECENCY_YEARS", 5),
             score_margin=_get_float("SCORE_MARGIN", 0.05),
             max_tied=_get_int("MAX_TIED", 3),
+            max_preprints=_get_int("MAX_PREPRINTS", 50),
             prospero_reject_similarity=_get_float("PROSPERO_REJECT_SIMILARITY", 0.75),
             prospero_review_similarity=_get_float("PROSPERO_REVIEW_SIMILARITY", 0.45),
         )

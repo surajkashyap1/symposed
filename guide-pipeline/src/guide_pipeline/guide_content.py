@@ -428,17 +428,19 @@ def citation(p: Paper) -> str:
     else:
         who = p.authors[0] + (" et al." if len(p.authors) > 1 else "")
     parts = [f"{who} ({p.year or 'n.d.'}).", p.title.rstrip(".") + ".",
-             f"{p.journal}." if p.journal else "", f"PMID {p.pmid}."]
+             f"{p.journal}." if p.journal else "",
+             f"Europe PMC {p.pmid}." if p.is_preprint else f"PMID {p.pmid}."]
     if p.doi:
         parts.append(f"doi:{p.doi}")
     return " ".join(x for x in parts if x)
 
 
 def prisma_counts(retrieval_identified: int, fetched: int, deduped: int,
-                  screening: ScreeningResult) -> dict[str, int]:
+                  screening: ScreeningResult, preprints_identified: int = 0) -> dict[str, int]:
     c = screening.counts
     return {
         "identified": retrieval_identified,
+        "preprints_identified": preprints_identified,
         "retrieved": fetched,
         "duplicates_removed": max(0, fetched - deduped),
         "screened": len(screening.papers),
@@ -572,8 +574,11 @@ def assemble(
                                publication_type=publication_type)
     appendix = [{"source": r.source, "query": r.query, "count": r.result,
                  "run_at": r.run_at} for r in assessment.searches]
-    appendix.append({"source": "PubMed", "query": retrieval.query, "count": records,
-                     "run_at": search_date})
+    appendix.append({"source": "PubMed", "query": retrieval.query,
+                     "count": retrieval.identified, "run_at": search_date})
+    if getattr(retrieval, "preprint_query", ""):
+        appendix.append({"source": "Europe PMC (preprints)", "query": retrieval.preprint_query,
+                         "count": retrieval.preprints_identified, "run_at": search_date})
     appendix += [{"source": "PubMed", "query": st.pubmed_query, "count": st.count,
                   "run_at": search_date} for st in strategies["strategies"]]
 
@@ -612,7 +617,8 @@ def assemble(
         skills=protocol["skills_needed"],
         extraction_fields=extraction_template(publication_type, criteria.study_designs),
         prisma=(prisma_counts(retrieval.identified, retrieval.fetched,
-                              len(retrieval.papers), screening)
+                              len(retrieval.papers), screening,
+                              getattr(retrieval, "preprints_identified", 0))
                 if is_systematic(publication_type) else None),
         structure=publication_structure(publication_type),
         timeline=tl,

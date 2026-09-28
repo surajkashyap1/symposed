@@ -49,6 +49,14 @@ class Paper:
     # online for years before print (seen: online 2020, issue 2023). Date-window
     # eligibility usually goes by first publication.
     epub_year: Optional[int] = None
+    # Where the record came from. Preprints from Europe PMC have no PMID: their
+    # Europe PMC id (e.g. PPR123456) goes in `pmid` with id_type "PPR".
+    id_type: str = "PMID"
+    source: str = "PubMed"
+
+    @property
+    def is_preprint(self) -> bool:
+        return self.id_type == "PPR"
 
     @property
     def first_published_year(self) -> Optional[int]:

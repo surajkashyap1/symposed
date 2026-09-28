@@ -123,3 +123,41 @@ def test_pubmed_year_filter_always_sends_both_ends(tmp_path):
     assert (seen[0]["mindate"], seen[0]["maxdate"]) == ("2023", "3000")
     assert (seen[1]["mindate"], seen[1]["maxdate"]) == ("1800", "2010")
     assert seen[0]["datetype"] == "pdat"
+
+
+def test_pubmed_to_europepmc_translation():
+    from guide_pipeline.sources.europepmc import pubmed_to_europepmc as t
+
+    assert t('("Pulmonary Disease, Chronic Obstructive"[Mesh] OR COPD[tiab]) AND inhaler*[tiab]') == \
+        '(KW:"Pulmonary Disease, Chronic Obstructive" OR TITLE_ABS:"COPD") AND TITLE_ABS:inhaler*'
+    assert t("(vitamin D[tiab] OR calcitriol[tiab]) AND 2010:2022[dp]") == \
+        '(TITLE_ABS:"vitamin D" OR TITLE_ABS:"calcitriol") AND PUB_YEAR:[2010 TO 2022]'
+    assert t("sepsis[tiab] AND systematic[sb]") == 'TITLE_ABS:"sepsis"'  # no dangling AND
+    assert t("(sepsis[tiab] AND systematic[sb]) AND fluid*[tiab]") == \
+        '(TITLE_ABS:"sepsis") AND TITLE_ABS:fluid*'
+
+
+def test_europepmc_records_map_preprints_and_page(tmp_path):
+    pages = []
+
+    def handler(request):
+        params = dict(request.url.params)
+        pages.append(params["cursorMark"])
+        if params["cursorMark"] == "*":
+            results = [{"source": "PPR", "id": "PPR123", "title": "A <i>preprint</i>.",
+                        "abstractText": "<p>Abs</p>", "pubYear": "2025", "doi": "10.1101/x",
+                        "bookOrReportDetails": {"publisher": "medRxiv"},
+                        "authorList": {"author": [{"lastName": "Lee", "initials": "K"}]}}]
+            return httpx.Response(200, json={"hitCount": 2, "nextCursorMark": "c2",
+                                             "resultList": {"result": results}})
+        results = [{"source": "MED", "id": "999", "pmid": "999", "title": "Published",
+                    "journalInfo": {"journal": {"title": "BMJ"}}, "pubYear": "2024"}]
+        return httpx.Response(200, json={"hitCount": 2, "nextCursorMark": "c2",
+                                         "resultList": {"result": results}})
+
+    papers = EuropePmcClient(http=http_for(handler, tmp_path)).search_records("q", max_records=5)
+    pre, pub = papers
+    assert (pre.pmid, pre.id_type, pre.is_preprint, pre.journal) == ("PPR123", "PPR", True, "medRxiv (preprint)")
+    assert (pre.title, pre.abstract, pre.authors) == ("A preprint", "Abs", ("Lee K",))
+    assert (pub.pmid, pub.id_type, pub.journal) == ("999", "PMID", "BMJ")
+    assert pages == ["*", "c2"]  # stopped when the cursor stopped moving

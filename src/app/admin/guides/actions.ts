@@ -8,6 +8,10 @@ import {
   guideOrders,
   guidePricingConfig,
   guideReviews,
+  guideRuns,
+  guideTieBreaks,
+  guideTitleRegistry,
+  guideVerifications,
   supportQuestions,
 } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
@@ -37,6 +41,67 @@ export async function markOrderInProgress(formData: FormData) {
     .set({ status: "in_progress", updatedAt: new Date() })
     .where(eq(guideOrders.id, id));
   redirect("/admin/guides");
+}
+
+const VERIFY_ACTIONS = ["approved", "edited_and_approved", "rejected"] as const;
+type VerifyAction = (typeof VERIFY_ACTIONS)[number];
+
+// Stage 6 (build spec §4): record the reviewer's decision on a pipeline run.
+// Approve / edit-and-approve require the date of the reviewer's own live
+// PROSPERO check on the title that ships. Reject sends the order back to the
+// next batch, with this title avoided. A tie-break override is recorded so the
+// override rate can be tracked.
+export async function verifyGuideRun(formData: FormData) {
+  const { profile } = await requireAdmin();
+  const runId = String(formData.get("runId") ?? "");
+  if (!isUuid(runId)) fail("Unknown pipeline run.");
+  const action = String(formData.get("action") ?? "") as VerifyAction;
+  if (!VERIFY_ACTIONS.includes(action)) fail("Choose approve, edit and approve, or reject.");
+  const editedTitle = String(formData.get("editedTitle") ?? "").trim() || null;
+  const notes = String(formData.get("notes") ?? "").trim() || null;
+  const liveDate = String(formData.get("liveProsperoCheckedOn") ?? "").trim() || null;
+  const reviewer =
+    String(formData.get("reviewer") ?? "").trim() || profile.fullName || profile.email;
+
+  if (action === "edited_and_approved" && !editedTitle)
+    fail("Give the edited title.");
+  if (action !== "approved" && !notes)
+    fail("Say what you changed or why you rejected it.");
+  if (action !== "rejected" && !(liveDate && /^\d{4}-\d{2}-\d{2}$/.test(liveDate)))
+    fail("Record the date of your live PROSPERO check before approving.");
+
+  const [run] = await db
+    .select({ id: guideRuns.id, orderId: guideRuns.orderId })
+    .from(guideRuns)
+    .where(eq(guideRuns.id, runId))
+    .limit(1);
+  if (!run) fail("Unknown pipeline run.");
+
+  await db.insert(guideVerifications).values({
+    runId,
+    orderId: run.orderId,
+    reviewer,
+    action,
+    editedTitle,
+    notes,
+    liveProsperoCheckedOn: action === "rejected" ? null : liveDate,
+  });
+  await db
+    .update(guideTitleRegistry)
+    .set({ status: action === "rejected" ? "rejected" : "approved" })
+    .where(eq(guideTitleRegistry.firstRunId, runId));
+
+  const override = String(formData.get("overrideChoice") ?? "");
+  if (override !== "" && /^\d+$/.test(override)) {
+    await db
+      .update(guideTieBreaks)
+      .set({
+        overrideChoice: Number(override),
+        overrideReason: notes,
+      })
+      .where(eq(guideTieBreaks.runId, runId));
+  }
+  redirect("/admin/guides?verified=1");
 }
 
 export async function markOrderRefunded(formData: FormData) {

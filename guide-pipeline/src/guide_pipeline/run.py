@@ -323,6 +323,7 @@ def run_request(
         "searches_run": [s.__dict__ for s in top.searches],
         "selection": selection.as_dict(),
         "guide": {
+            "rationale": content.rationale,
             "warnings_for_reviewer": content.warnings,
             "strategies": [{"name": st.name, "pubmed_query": st.pubmed_query,
                             "count": st.count, "unverified_mesh": st.unverified_mesh}

@@ -4,6 +4,8 @@ import { guideOrders, guidePricingConfig, guideReviews } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { GUIDE_GRADES, formatPounds } from "@/lib/guides-meta";
 import { listPendingSupportQuestions } from "@/lib/queries/member";
+import { latestRunReview } from "@/lib/queries/guide-runs";
+import { GuideRunPanel } from "@/components/admin/guide-run-panel";
 import {
   answerSupportQuestion,
   createComplimentaryReview,
@@ -38,10 +40,10 @@ function workingDaysSince(from: Date, to = new Date()): number {
 export default async function AdminGuidesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; delivered?: string }>;
+  searchParams: Promise<{ error?: string; delivered?: string; verified?: string }>;
 }) {
   await requireAdmin();
-  const { error, delivered } = await searchParams;
+  const { error, delivered, verified } = await searchParams;
 
   const [orders, [config], pendingReviews, decidedReviews, [salesAgg], supportQs] =
     await Promise.all([
@@ -78,6 +80,12 @@ export default async function AdminGuidesPage({
   const done = orders.filter(
     (o) => o.status === "delivered" || o.status === "refunded"
   );
+  // Stage 6: the latest pipeline run for each order in the queue.
+  const reviews = new Map(
+    await Promise.all(
+      active.map(async (o) => [o.id, await latestRunReview(o.id)] as const)
+    )
+  );
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-12">
@@ -87,6 +95,11 @@ export default async function AdminGuidesPage({
       {error && (
         <div className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
+        </div>
+      )}
+      {verified && (
+        <div className="mt-4 rounded-md border border-success/30 bg-success/10 px-4 py-3 text-sm">
+          Decision recorded against the pipeline run.
         </div>
       )}
       {delivered && (
@@ -168,6 +181,7 @@ export default async function AdminGuidesPage({
                       {JSON.stringify(proforma, null, 2)}
                     </pre>
                   </details>
+                  <GuideRunPanel review={reviews.get(o.id) ?? null} />
                   <p className="text-xs text-muted-foreground">
                     Paid {o.paidAt?.toLocaleString("en-GB")} ·{" "}
                     {o.pricePaidPence != null && formatPounds(o.pricePaidPence)} ·

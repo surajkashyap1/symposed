@@ -451,3 +451,11 @@ def test_candidate_calls_send_the_axis_enum_schema():
     generate_candidates(SchemaLLM(six_axis_batch()), "sepsis")
     axis = seen[0]["properties"]["candidates"]["items"]["properties"]["axis"]
     assert axis["enum"] == list(AXES)
+
+
+def test_titles_offered_elsewhere_are_avoided_from_the_first_batch(tmp_path):
+    llm = FakeLLM(six_axis_batch())
+    pubmed, ct = make_sources(routed_handler(), tmp_path)
+    screen_candidates(llm, pubmed, ct, make_mirror(tmp_path), "sepsis", TH, today=TODAY,
+                      avoid_titles=("Title offered to another customer",))
+    assert "Title offered to another customer" in llm.calls[0][1]

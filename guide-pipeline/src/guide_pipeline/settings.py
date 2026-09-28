@@ -111,6 +111,8 @@ class Settings:
     llm_batch: bool = True              # per-paper steps via the Batch API (half price)
     batch_poll_seconds: float = 30.0    # how often to check a running batch
     fulltext_max_chars: int = 60_000    # cap on open-access full text per paper
+    # website database the pipeline reads orders from and writes runs to
+    database_url: Optional[str] = None
     # PROSPERO mirror (spec section 3)
     prospero_db: Path = Path("data/prospero.sqlite")
     prospero_max_age_days: int = 10     # refuse to run on a mirror older than this
@@ -137,6 +139,7 @@ class Settings:
             llm_batch=(_get("LLM_BATCH", "true") or "true").lower() in ("1", "true", "yes", "on"),
             batch_poll_seconds=_get_float("BATCH_POLL_SECONDS", 30.0),
             fulltext_max_chars=_get_int("FULLTEXT_MAX_CHARS", 60_000),
+            database_url=_get("PIPELINE_DATABASE_URL") or _get("STAGING_DATABASE_URL"),
             prospero_db=Path(_get("PROSPERO_DB", "data/prospero.sqlite") or "data/prospero.sqlite"),
             prospero_max_age_days=_get_int("PROSPERO_MAX_AGE_DAYS", 10),
             prospero_min_interval=_get_float("PROSPERO_MIN_INTERVAL", 3.0),

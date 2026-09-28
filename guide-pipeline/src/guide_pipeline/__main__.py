@@ -402,6 +402,60 @@ def run_cmd(path: str, limit: int | None = None) -> int:
     return 0
 
 
+def batch_cmd(limit: int | None = None, max_orders: int | None = None) -> int:
+    """The Friday batch: refresh PROSPERO, then run every order that needs a run."""
+    from . import db
+    from .run import _git_version
+
+    settings = Settings.load()
+    if not settings.database_url:
+        print("Set PIPELINE_DATABASE_URL (or STAGING_DATABASE_URL) in .env first.")
+        return 2
+    print(f"Guide batch against database host: {db.host_of(settings.database_url)}\n")
+    if prospero_cmd(["refresh"]) != 0:
+        print("  PROSPERO refresh failed: not processing any orders on a stale mirror.")
+        return 1
+    sources = build_sources(settings)
+    conn = db.connect(settings.database_url)
+    try:
+        orders = db.orders_to_process(conn)[:max_orders] if max_orders else db.orders_to_process(conn)
+        print(f"\n{len(orders)} order(s) to process")
+        failures = 0
+        for order in orders:
+            meter = UsageMeter()
+            llms = {t: _llm(settings, t, meter) for t in RUN_TASKS}
+            if any(v is None for v in llms.values()):
+                return 2
+            request = from_proforma(order.proforma, order_id=order.id)
+            avoid = db.titles_to_avoid(conn, order.id)
+            run_id = db.start_run(conn, order.id, _git_version())
+            print(f"\n== Order {order.id} (run {run_id}); avoiding {len(avoid)} title(s)")
+            mirror = ProsperoMirror(settings.prospero_db)
+            try:
+                report = run_request(request, settings=settings, sources=sources,
+                                     mirror=mirror, llms=llms, meter=meter, limit=limit,
+                                     avoid_titles=tuple(avoid),
+                                     progress=lambda m: print(f"  {m}", flush=True))
+                docx = None
+                if report.guide_path:
+                    from pathlib import Path as _Path
+                    docx = _Path(report.guide_path).read_bytes()
+                db.save_run(conn, run_id, report, docx=docx)
+                print(f"  -> {report.outcome}: {report.title or report.screen.contact_reason}"
+                      f"  (${report.metrics.get('cost_usd', 0):.2f})")
+            except Exception as exc:  # one order failing must not stop the batch
+                failures += 1
+                db.fail_run(conn, run_id, f"{type(exc).__name__}: {exc}")
+                print(f"  -> FAILED: {type(exc).__name__}: {exc}")
+            finally:
+                mirror.close()
+        print(f"\nBatch done: {len(orders) - failures} run(s) saved, {failures} failed. "
+              "Review them in /admin/guides.")
+        return 0 if not failures else 1
+    finally:
+        conn.close()
+
+
 def metrics_cmd() -> int:
     """Averages across all recorded runs, blank topic vs topic given."""
     import json as _json
@@ -525,6 +579,15 @@ def main(argv: list[str] | None = None) -> int:
             print("Usage: python -m guide_pipeline run <request.json> [--limit N] [--sync]")
             return 2
         return run_cmd(rest[0], limit=limit)
+    if argv and argv[0] == "batch":
+        rest = argv[1:]
+        opts = {}
+        for flag in ("--limit", "--max-orders"):
+            if flag in rest:
+                i = rest.index(flag)
+                opts[flag] = int(rest[i + 1])
+                rest = rest[:i] + rest[i + 2:]
+        return batch_cmd(limit=opts.get("--limit"), max_orders=opts.get("--max-orders"))
     if argv and argv[0] == "metrics":
         return metrics_cmd()
     if argv and argv[0] in ("recall", "consistency"):

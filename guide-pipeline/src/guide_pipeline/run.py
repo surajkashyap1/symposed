@@ -179,6 +179,7 @@ def run_request(
     meter: UsageMeter,
     limit: Optional[int] = None,
     progress: Optional[Progress] = None,
+    avoid_titles: tuple[str, ...] = (),
 ) -> RunReport:
     say = progress or (lambda _m: None)
     th = settings.thresholds
@@ -203,6 +204,7 @@ def run_request(
         llms["candidate_generation"], sources.pubmed, sources.clinicaltrials, mirror,
         request.generation_topic, th, landscape=landscape,
         mirror_max_age_days=settings.prospero_max_age_days, preferences=prefs,
+        avoid_titles=tuple(avoid_titles),
     ))
     label = request.order_id or "request"
     report = RunReport(request, screen.outcome, None, screen, landscape=landscape,

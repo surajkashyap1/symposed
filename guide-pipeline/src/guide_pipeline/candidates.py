@@ -575,6 +575,7 @@ def screen_candidates(
     mirror_max_age_days: int = 10,
     preferences: Optional[RequestPreferences] = None,
     today: Optional[date] = None,
+    avoid_titles: tuple[str, ...] = (),
 ) -> ScreenResult:
     """End to end: generate, triage + gate, rank — batch by batch (spec §1.2).
 
@@ -591,7 +592,9 @@ def screen_candidates(
     batches = 0
     while batches < thresholds.max_candidate_batches:
         batches += 1
-        rejected = tuple(a.candidate.title for a in assessments if not a.verdict.passed)
+        # Rejected here, plus titles offered elsewhere or rejected by a reviewer.
+        rejected = tuple(avoid_titles) + tuple(
+            a.candidate.title for a in assessments if not a.verdict.passed)
         failed_axes = tuple(dict.fromkeys(a.candidate.axis for a in assessments))
         candidates = generate_candidates(
             llm,

@@ -41,6 +41,9 @@ const MANUAL_SQL = [
   "drizzle/manual/0002_realtime_messaging.sql",
   "drizzle/manual/0003_profile_assets_storage.sql",
   "drizzle/manual/0004_enable_rls.sql",
+  "drizzle/manual/0005_teaching_seed.sql",
+  "drizzle/manual/0006_guides_seed.sql",
+  "drizzle/manual/0007_platform_seed.sql",
 ];
 
 // 1) drizzle-kit migrate — inherits our env, so MIGRATION_DATABASE_URL wins over

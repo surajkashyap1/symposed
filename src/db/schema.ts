@@ -21,7 +21,15 @@ import {
   primaryKey,
   unique,
   index,
+  jsonb,
+  customType,
 } from "drizzle-orm/pg-core";
+
+// Raw bytes (the pipeline's draft .docx, ~50 KB). Kept in the row rather than a
+// storage bucket so a draft and its verification record live together.
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType: () => "bytea",
+});
 
 // ----------------------------- ENUMS ---------------------------------
 
@@ -450,6 +458,135 @@ export const guideReviews = pgTable("guide_reviews", {
   publishedAt: timestamp("published_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("guide_reviews_status_idx").on(t.status, t.publishedAt)]);
+
+// ------------------- GUIDE PIPELINE (build spec §5) -------------------
+// Written by the Python guide pipeline (service role) and read by the admin
+// verification screen (Stage 6). One run per pipeline attempt for an order; a
+// rejected run leads to a fresh run with the rejected title passed back as
+// negative context. No include/exclude boolean exists anywhere here: papers
+// carry a visible graded status with its reason and evidence basis.
+
+export const guideRunStatus = pgEnum("guide_run_status", [
+  "running", "found", "needs_contact", "failed",
+]);
+
+export const guideRuns = pgTable("guide_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orderId: uuid("order_id").references(() => guideOrders.id, { onDelete: "cascade" }),
+  status: guideRunStatus("status").notNull().default("running"),
+  title: text("title"),
+  publicationType: text("publication_type"),
+  axis: text("axis"),
+  contactReason: text("contact_reason"), // why the user must be emailed (needs_contact)
+  costUsd: numeric("cost_usd", { precision: 10, scale: 4 }),
+  pipelineVersion: text("pipeline_version"),
+  results: jsonb("results"), // the full results record (criteria, selection, guide parts)
+  metrics: jsonb("metrics"), // the per-guide feedback record
+  guideDocx: bytea("guide_docx"), // the draft guide, for the reviewer
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+}, (t) => [index("guide_runs_order_idx").on(t.orderId, t.startedAt)]);
+
+// Every candidate a run generated, with its gate results and score.
+export const guideRunCandidates = pgTable("guide_run_candidates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull().references(() => guideRuns.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  normalizedTitle: text("normalized_title").notNull(),
+  axis: text("axis").notNull(),
+  batch: integer("batch").notNull(),
+  outcome: text("outcome").notNull(), // pass | flag | downgrade | reject
+  gates: jsonb("gates").notNull(), // every gate with outcome, value and threshold
+  score: jsonb("score"), // Stage 4b components and total, when scored
+  eligibleStudies: integer("eligible_studies"),
+  recentReviews: integer("recent_reviews"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("guide_run_candidates_run_idx").on(t.runId),
+  index("guide_run_candidates_title_idx").on(t.normalizedTitle),
+]);
+
+// Spec §5's highest-value item: a question offered to one customer is never
+// offered to another. One row per normalised title that reached a reviewer.
+export const guideTitleRegistry = pgTable("guide_title_registry", {
+  normalizedTitle: text("normalized_title").primaryKey(),
+  title: text("title").notNull(),
+  firstRunId: uuid("first_run_id").references(() => guideRuns.id, { onDelete: "set null" }),
+  orderId: uuid("order_id").references(() => guideOrders.id, { onDelete: "set null" }),
+  status: text("status").notNull().default("offered"), // offered | approved | rejected
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Every search run: source, exact query, result count, time (spec §4 Stage 5).
+export const guideSearches = pgTable("guide_searches", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull().references(() => guideRuns.id, { onDelete: "cascade" }),
+  source: text("source").notNull(),
+  query: text("query").notNull(),
+  resultCount: integer("result_count"),
+  runAt: timestamp("run_at", { withTimezone: true }).notNull(),
+}, (t) => [index("guide_searches_run_idx").on(t.runId)]);
+
+// The chosen question's papers with their graded screening estimate.
+export const guideScreenedPapers = pgTable("guide_screened_papers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull().references(() => guideRuns.id, { onDelete: "cascade" }),
+  identifier: text("identifier").notNull(), // PMID, or Europe PMC id for preprints
+  idType: text("id_type").notNull().default("PMID"),
+  doi: text("doi"),
+  title: text("title").notNull(),
+  year: integer("year"),
+  journal: text("journal"),
+  status: text("status").notNull(), // likely eligible | likely ineligible | unclear, check full text
+  reason: text("reason").notNull(),
+  evidenceBasis: text("evidence_basis").notNull(), // abstract only | full text (...)
+  attributes: jsonb("attributes"),
+}, (t) => [index("guide_screened_papers_run_idx").on(t.runId, t.status)]);
+
+// The record kept for every PROSPERO check (spec §3.5): retain permanently.
+export const guideProsperoChecks = pgTable("guide_prospero_checks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull().references(() => guideRuns.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  searchTerms: text("search_terms").notNull(),
+  checkedOn: date("checked_on").notNull(),
+  mirrorCoveredTo: date("mirror_covered_to").notNull(),
+  mirrorRefreshedAt: timestamp("mirror_refreshed_at", { withTimezone: true }),
+  verdict: text("verdict").notNull(), // registered | review | clear
+  matches: jsonb("matches").notNull(),
+}, (t) => [index("guide_prospero_checks_run_idx").on(t.runId)]);
+
+// Stage 5b: the model's choice between tied questions, its rationale per
+// criterion, and the reviewer's override (overrides are counted to tune it).
+export const guideTieBreaks = pgTable("guide_tie_breaks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull().references(() => guideRuns.id, { onDelete: "cascade" }),
+  candidates: jsonb("candidates").notNull(),
+  modelChoice: integer("model_choice").notNull(),
+  rationale: jsonb("rationale").notNull(),
+  summary: text("summary"),
+  overrideChoice: integer("override_choice"),
+  overrideReason: text("override_reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("guide_tie_breaks_run_idx").on(t.runId)]);
+
+// Stage 6: who verified, when, what changed, the outcome, and the date of the
+// reviewer's live PROSPERO check on the title that ships.
+export const guideVerificationAction = pgEnum("guide_verification_action", [
+  "approved", "edited_and_approved", "rejected",
+]);
+
+export const guideVerifications = pgTable("guide_verifications", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  runId: uuid("run_id").notNull().references(() => guideRuns.id, { onDelete: "cascade" }),
+  orderId: uuid("order_id").references(() => guideOrders.id, { onDelete: "set null" }),
+  reviewer: text("reviewer").notNull(),
+  action: guideVerificationAction("action").notNull(),
+  editedTitle: text("edited_title"),
+  notes: text("notes"),
+  liveProsperoCheckedOn: date("live_prospero_checked_on"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("guide_verifications_run_idx").on(t.runId)]);
 
 // ------------------------ TEACHING PLATFORM --------------------------
 

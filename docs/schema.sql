@@ -413,6 +413,127 @@ create table guide_reviews (
 
 create index guide_reviews_status_idx on guide_reviews (status, published_at);
 
+-- ----------------------- GUIDE PIPELINE (build spec §5) --------------------
+-- Written by the Python guide pipeline, read by the admin verification screen.
+-- No include/exclude boolean anywhere: papers carry a visible graded status.
+
+create type guide_run_status as enum ('running', 'found', 'needs_contact', 'failed');
+
+create table guide_runs (
+  id                uuid primary key default gen_random_uuid(),
+  order_id          uuid references guide_orders(id) on delete cascade,
+  status            guide_run_status not null default 'running',
+  title             text,
+  publication_type  text,
+  axis              text,
+  contact_reason    text,             -- why to email the user (needs_contact)
+  cost_usd          numeric(10,4),
+  pipeline_version  text,
+  results           jsonb,            -- full results record
+  metrics           jsonb,            -- per-guide feedback record
+  guide_docx        bytea,            -- draft guide for the reviewer
+  started_at        timestamptz not null default now(),
+  finished_at       timestamptz
+);
+create index guide_runs_order_idx on guide_runs (order_id, started_at);
+
+create table guide_run_candidates (
+  id                uuid primary key default gen_random_uuid(),
+  run_id            uuid not null references guide_runs(id) on delete cascade,
+  title             text not null,
+  normalized_title  text not null,
+  axis              text not null,
+  batch             integer not null,
+  outcome           text not null,    -- pass | flag | downgrade | reject
+  gates             jsonb not null,   -- each gate: outcome, value, threshold
+  score             jsonb,
+  eligible_studies  integer,
+  recent_reviews    integer,
+  created_at        timestamptz not null default now()
+);
+create index guide_run_candidates_run_idx on guide_run_candidates (run_id);
+create index guide_run_candidates_title_idx on guide_run_candidates (normalized_title);
+
+-- A question offered to one customer is never offered to another (spec §5).
+create table guide_title_registry (
+  normalized_title  text primary key,
+  title             text not null,
+  first_run_id      uuid references guide_runs(id) on delete set null,
+  order_id          uuid references guide_orders(id) on delete set null,
+  status            text not null default 'offered',  -- offered | approved | rejected
+  created_at        timestamptz not null default now()
+);
+
+create table guide_searches (
+  id            uuid primary key default gen_random_uuid(),
+  run_id        uuid not null references guide_runs(id) on delete cascade,
+  source        text not null,
+  query         text not null,
+  result_count  integer,
+  run_at        timestamptz not null
+);
+create index guide_searches_run_idx on guide_searches (run_id);
+
+create table guide_screened_papers (
+  id              uuid primary key default gen_random_uuid(),
+  run_id          uuid not null references guide_runs(id) on delete cascade,
+  identifier      text not null,      -- PMID, or Europe PMC id for preprints
+  id_type         text not null default 'PMID',
+  doi             text,
+  title           text not null,
+  year            integer,
+  journal         text,
+  status          text not null,      -- likely eligible | likely ineligible | unclear, check full text
+  reason          text not null,
+  evidence_basis  text not null,      -- abstract only | full text (...)
+  attributes      jsonb
+);
+create index guide_screened_papers_run_idx on guide_screened_papers (run_id, status);
+
+-- The PROSPERO check record (spec §3.5): retain permanently.
+create table guide_prospero_checks (
+  id                   uuid primary key default gen_random_uuid(),
+  run_id               uuid not null references guide_runs(id) on delete cascade,
+  title                text not null,
+  search_terms         text not null,
+  checked_on           date not null,
+  mirror_covered_to    date not null,
+  mirror_refreshed_at  timestamptz,
+  verdict              text not null,  -- registered | review | clear
+  matches              jsonb not null
+);
+create index guide_prospero_checks_run_idx on guide_prospero_checks (run_id);
+
+create table guide_tie_breaks (
+  id               uuid primary key default gen_random_uuid(),
+  run_id           uuid not null references guide_runs(id) on delete cascade,
+  candidates       jsonb not null,
+  model_choice     integer not null,
+  rationale        jsonb not null,
+  summary          text,
+  override_choice  integer,
+  override_reason  text,
+  created_at       timestamptz not null default now()
+);
+create index guide_tie_breaks_run_idx on guide_tie_breaks (run_id);
+
+create type guide_verification_action as enum
+  ('approved', 'edited_and_approved', 'rejected');
+
+-- Stage 6: who verified, when, what changed, the outcome, live PROSPERO date.
+create table guide_verifications (
+  id                        uuid primary key default gen_random_uuid(),
+  run_id                    uuid not null references guide_runs(id) on delete cascade,
+  order_id                  uuid references guide_orders(id) on delete set null,
+  reviewer                  text not null,
+  action                    guide_verification_action not null,
+  edited_title              text,
+  notes                     text,
+  live_prospero_checked_on  date,
+  created_at                timestamptz not null default now()
+);
+create index guide_verifications_run_idx on guide_verifications (run_id);
+
 -- ------------------------ TEACHING PLATFORM --------------------------
 
 -- Commissioned topics on /teach: admin-editable rows, never hardcoded.

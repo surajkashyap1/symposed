@@ -85,6 +85,13 @@
       "when": 1789321582945,
       "tag": "0011_light_xorn",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790605135176,
+      "tag": "0012_slimy_blindfold",
+      "breakpoints": true
     }
   ]
 }

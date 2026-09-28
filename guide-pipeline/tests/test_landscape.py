@@ -132,9 +132,34 @@ def test_landscape_as_dict_is_json_shaped(tmp_path):
         "by_year": {"2025": 55},
         "systematic_reviews": 11,
         "guidelines": 3,
+        "by_year_source": "PubMed",
+        "openalex_total": None,
     }
 
 
 def test_guideline_filter_uses_publication_types():
     assert "Guideline[ptyp]" in FILTER_GUIDELINE
     assert "Practice Guideline" in FILTER_GUIDELINE
+
+
+def test_landscape_uses_one_openalex_call_for_years(tmp_path):
+    from types import SimpleNamespace
+
+    from guide_pipeline.landscape import assess_landscape
+
+    calls = []
+
+    class FakePubMed:
+        def mesh_terms(self, topic):
+            return []
+
+        def count(self, q, **kw):
+            calls.append(kw)
+            return 7
+
+    oa = SimpleNamespace(works_by_year=lambda s, first_year, last_year:
+                         (9000, {y: 100 for y in range(first_year, last_year + 1)}))
+    lc = assess_landscape(FakePubMed(), "copd", years=3, current_year=2026, openalex=oa)
+    assert lc.by_year_source == "OpenAlex" and lc.openalex_total == 9000
+    assert lc.by_year == {2024: 100, 2025: 100, 2026: 100}
+    assert all("min_year" not in kw for kw in calls)  # no per-year PubMed calls

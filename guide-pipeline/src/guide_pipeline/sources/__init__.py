@@ -8,11 +8,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from ..http import CachedHttpClient
 from ..settings import Settings
 from .clinicaltrials import ClinicalTrialsClient
+from .crossref import CrossrefClient
 from .europepmc import EuropePmcClient
+from .openalex import OpenAlexClient
 from .pubmed import MeshTerm, Paper, PubMedClient
 
 __all__ = [
@@ -21,6 +24,8 @@ __all__ = [
     "Paper",
     "EuropePmcClient",
     "ClinicalTrialsClient",
+    "CrossrefClient",
+    "OpenAlexClient",
     "Sources",
     "build_sources",
 ]
@@ -34,11 +39,13 @@ _POLITE_INTERVAL = 0.35
 
 @dataclass(frozen=True)
 class Sources:
-    """The three v1 data-source clients, ready to query."""
+    """The data-source clients, ready to query."""
 
     pubmed: PubMedClient
     europepmc: EuropePmcClient
     clinicaltrials: ClinicalTrialsClient
+    openalex: Optional[OpenAlexClient] = None
+    crossref: Optional[CrossrefClient] = None
 
 
 def build_sources(settings: Settings, *, cache_dir: str | Path = ".cache") -> Sources:
@@ -59,5 +66,13 @@ def build_sources(settings: Settings, *, cache_dir: str | Path = ".cache") -> So
         ),
         clinicaltrials=ClinicalTrialsClient(
             http=CachedHttpClient(cache_dir=cache_dir, min_interval=_POLITE_INTERVAL),
+        ),
+        openalex=OpenAlexClient(
+            http=CachedHttpClient(cache_dir=cache_dir, min_interval=_POLITE_INTERVAL),
+            email=settings.contact_email,
+        ),
+        crossref=CrossrefClient(
+            http=CachedHttpClient(cache_dir=cache_dir, min_interval=_POLITE_INTERVAL),
+            email=settings.contact_email,
         ),
     )

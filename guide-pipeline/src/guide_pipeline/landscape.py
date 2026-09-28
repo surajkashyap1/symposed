@@ -17,9 +17,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+import httpx
 
 from .sources.pubmed import MeshTerm, PubMedClient
+
+if TYPE_CHECKING:
+    from .sources.openalex import OpenAlexClient
 
 # PubMed's own filters. `systematic[sb]` is the systematic-review subset;
 # guidelines are the two guideline publication types.
@@ -35,6 +40,8 @@ class Landscape:
     by_year: dict[int, int]
     systematic_reviews: int
     guidelines: int
+    by_year_source: str = "PubMed"
+    openalex_total: Optional[int] = None
 
     def as_dict(self) -> dict:
         return {
@@ -44,6 +51,8 @@ class Landscape:
             "by_year": {str(y): n for y, n in self.by_year.items()},
             "systematic_reviews": self.systematic_reviews,
             "guidelines": self.guidelines,
+            "by_year_source": self.by_year_source,
+            "openalex_total": self.openalex_total,
         }
 
 
@@ -53,15 +62,28 @@ def assess_landscape(
     *,
     years: int = 10,
     current_year: Optional[int] = None,
+    openalex: Optional["OpenAlexClient"] = None,
 ) -> Landscape:
     """Map `topic` to MeSH terms and gather the four landscape counts."""
     current_year = current_year or datetime.now(timezone.utc).year
     mesh_terms = pubmed.mesh_terms(topic)
     total = pubmed.count(topic)
-    by_year = {
-        year: pubmed.count(topic, min_year=year, max_year=year)
-        for year in range(current_year - years + 1, current_year + 1)
-    }
+    first = current_year - years + 1
+    by_year_source, openalex_total = "PubMed", None
+    by_year: dict[int, int] = {}
+    if openalex is not None:
+        # One call for the whole distribution (spec Stage 1); PubMed if it fails.
+        try:
+            openalex_total, by_year = openalex.works_by_year(
+                topic, first_year=first, last_year=current_year)
+            by_year_source = "OpenAlex"
+        except httpx.HTTPError:
+            by_year = {}
+    if not by_year:
+        by_year = {
+            year: pubmed.count(topic, min_year=year, max_year=year)
+            for year in range(first, current_year + 1)
+        }
     systematic_reviews = pubmed.count(f"({topic}) AND {FILTER_SYSTEMATIC_REVIEW}")
     guidelines = pubmed.count(f"({topic}) AND {FILTER_GUIDELINE}")
     return Landscape(
@@ -71,4 +93,6 @@ def assess_landscape(
         by_year=by_year,
         systematic_reviews=systematic_reviews,
         guidelines=guidelines,
+        by_year_source=by_year_source,
+        openalex_total=openalex_total,
     )

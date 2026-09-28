@@ -17,10 +17,12 @@ import json
 import subprocess
 import time
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
+
+import httpx
 
 from .candidates import (
     FILTER_PRIMARY,
@@ -193,7 +195,8 @@ def run_request(
     mirror.ensure_fresh(max_age_days=settings.prospero_max_age_days)
     say(f"Landscape for: {request.search_topic}")
     landscape = timed("landscape", lambda: assess_landscape(
-        sources.pubmed, request.search_topic, years=settings.landscape_years))
+        sources.pubmed, request.search_topic, years=settings.landscape_years,
+        openalex=getattr(sources, "openalex", None)))
 
     say("Generating and gating candidate questions...")
     screen = timed("candidates", lambda: screen_candidates(
@@ -294,6 +297,10 @@ def run_request(
     workspace = report.workspace = create_workspace(report.title, base=settings.output_dir)
     report.retrieval, report.screening = retrieval, screening
     say(f"Chosen question ({top.candidate.axis}): {report.title}")
+    filled = timed("retrieval", lambda: fill_missing_dois(
+        getattr(sources, "crossref", None), screening))
+    if filled:
+        say(f"Crossref supplied {filled} missing DOI(s)")
     search_date = today.strftime("%Y-%m-%d")
     say("Writing the guide (search strategies, protocol, PROSPERO entry)...")
     content = timed("guide", lambda: assemble(
@@ -330,6 +337,29 @@ def run_request(
         **screening.as_dict(),
     })
     return report
+
+
+def fill_missing_dois(crossref: Any, screening: ScreeningResult, *, limit: int = 40) -> int:
+    """Look up DOIs (Crossref, title-matched) for plausibly eligible papers lacking one.
+
+    These are the papers the user may need to fetch through their own access,
+    which the guide lists by DOI.
+    """
+    if crossref is None:
+        return 0
+    filled = 0
+    targets = [s for s in screening.papers
+               if s.status in (LIKELY_ELIGIBLE, UNCLEAR) and not s.paper.doi][:limit]
+    for s in targets:
+        try:
+            doi = crossref.find_doi(s.paper.title, s.paper.first_published_year)
+        except httpx.HTTPError:
+            continue
+        if doi:
+            s.paper = replace(s.paper, doi=doi)
+            s.attributes["doi_source"] = "Crossref (title match)"
+            filled += 1
+    return filled
 
 
 def _finish(report: RunReport, meter: UsageMeter, settings: Settings, *, extra: dict) -> None:

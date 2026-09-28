@@ -161,3 +161,36 @@ def test_europepmc_records_map_preprints_and_page(tmp_path):
     assert (pre.title, pre.abstract, pre.authors) == ("A preprint", "Abs", ("Lee K",))
     assert (pub.pmid, pub.id_type, pub.journal) == ("999", "PMID", "BMJ")
     assert pages == ["*", "c2"]  # stopped when the cursor stopped moving
+
+
+def test_openalex_year_distribution_in_one_call(tmp_path):
+    from guide_pipeline.sources.openalex import OpenAlexClient
+
+    seen = []
+
+    def handler(request):
+        seen.append(dict(request.url.params))
+        return httpx.Response(200, json={"meta": {"count": 50}, "group_by": [
+            {"key": "2025", "count": 30}, {"key": "2024", "count": 20}, {"key": "unknown", "count": 1}]})
+
+    total, by_year = OpenAlexClient(http=http_for(handler, tmp_path), email="ops@x.org") \
+        .works_by_year("copd", first_year=2023, last_year=2025)
+    assert total == 50 and by_year == {2023: 0, 2024: 20, 2025: 30}
+    assert len(seen) == 1 and seen[0]["group_by"] == "publication_year"
+    assert seen[0]["mailto"] == "ops@x.org"
+
+
+def test_crossref_doi_only_on_a_close_title_and_year_match(tmp_path):
+    from guide_pipeline.sources.crossref import CrossrefClient
+
+    def handler(request):
+        return httpx.Response(200, json={"message": {"items": [
+            {"DOI": "10.9/WRONG", "title": ["Something else entirely"],
+             "issued": {"date-parts": [[2021]]}},
+            {"DOI": "10.1/RIGHT", "title": ["Vitamin D in critically ill adults"],
+             "issued": {"date-parts": [[2021]]}}]}})
+
+    cr = CrossrefClient(http=http_for(handler, tmp_path))
+    assert cr.find_doi("Vitamin D in critically ill adults.", 2021) == "10.1/right"
+    assert cr.find_doi("Vitamin D in critically ill adults", 2015) is None  # year too far
+    assert cr.find_doi("Magnesium in sepsis", 2021) is None  # no close title

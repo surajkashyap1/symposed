@@ -308,8 +308,11 @@ def build_guide(
     if landscape is not None:
         doc.add_heading("Appendix: research landscape", level=1)
         doc.add_paragraph(
-            f"Total literature {landscape.total_literature:,}; systematic reviews "
+            f"PubMed: total literature {landscape.total_literature:,}; systematic reviews "
             f"{landscape.systematic_reviews:,}; guidelines {landscape.guidelines:,}.")
+        if landscape.by_year:
+            years = ", ".join(f"{y}: {n:,}" for y, n in sorted(landscape.by_year.items()))
+            doc.add_paragraph(f"Publications per year ({landscape.by_year_source}): {years}.")
 
     for style in ("Normal",):
         doc.styles[style].font.size = Pt(11)

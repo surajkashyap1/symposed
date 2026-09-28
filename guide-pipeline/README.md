@@ -82,7 +82,12 @@ v1 above was the cut-down slice. We are now aligning it with the full
   and only if still tied does the model choose (max effort), with its rationale
   per criterion stored, a reviewer override field, and unchosen candidates kept.
 - **A7 — Database schema** (§5 tables, unique normalised-title index) + Sheets sync.
-- **A8 — More sources**: OpenAlex, Semantic Scholar, CORE, WHO ICTRP, Crossref.
+- **A8 — More sources** ✅ (partly): Europe PMC preprints as a second retrieval
+  source (PubMed queries translated to Europe PMC syntax, verified against
+  PubMed counts); OpenAlex for the landscape's year distribution (one call);
+  Crossref DOI gap-filling (accepted only on a close title and year match).
+  Not yet: Semantic Scholar and CORE (need free API keys), WHO ICTRP (no public
+  API, bulk export only).
 - **A9 — Full 26-section guide** ✅ (`guide_content.py` + `guide.py`): sections in
   the spec's order, verbatim novelty statement, registration urgency and
   disclaimers plus the website's acknowledgement and AI note. Built by code:

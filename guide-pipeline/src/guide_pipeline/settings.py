@@ -94,6 +94,9 @@ class Settings:
     ncbi_api_key: Optional[str] = None
     ncbi_tool: str = "symposed-guide-pipeline"
     ncbi_email: Optional[str] = None
+    # Contact for OpenAlex / Crossref "polite pools". Deliberately separate from
+    # NCBI_EMAIL, which is a personal address given for NCBI only.
+    contact_email: Optional[str] = None
     # llm — Claude Sonnet 5 for every task (effort per task); Groq selectable
     llm_provider: str = "anthropic"
     groq_api_key: Optional[str] = None
@@ -122,6 +125,7 @@ class Settings:
             ncbi_api_key=_get("NCBI_API_KEY"),
             ncbi_tool=_get("NCBI_TOOL", "symposed-guide-pipeline") or "symposed-guide-pipeline",
             ncbi_email=_get("NCBI_EMAIL"),
+            contact_email=_get("CONTACT_EMAIL"),
             llm_provider=(_get("LLM_PROVIDER", "anthropic") or "anthropic").lower(),
             groq_api_key=_get("GROQ_API_KEY"),
             groq_model=_get("GROQ_MODEL", "openai/gpt-oss-120b") or "openai/gpt-oss-120b",

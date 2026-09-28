@@ -236,3 +236,21 @@ def test_output_folder_is_named_after_the_chosen_question(tmp_path, monkeypatch,
     report = run(tmp_path, monkeypatch, ScreenResult([near, weak], [weak, near], weak,
                                                      batches=1, outcome=FOUND))
     assert "near-identical" in report.workspace.dir.name
+
+
+def test_missing_dois_filled_from_crossref_for_plausible_papers_only():
+    from guide_pipeline.screening import LIKELY_INELIGIBLE
+
+    papers = [
+        ScreenedPaper(Paper("1", "Needs DOI", "a", (), "J", 2021, None), {}, UNCLEAR, "r", "abstract only"),
+        ScreenedPaper(Paper("2", "Has DOI", "a", (), "J", 2021, "10.1/has"), {}, UNCLEAR, "r", "abstract only"),
+        ScreenedPaper(Paper("3", "Ineligible", "a", (), "J", 2021, None), {}, LIKELY_INELIGIBLE, "r", "abstract only"),
+    ]
+    screening = ScreeningResult(Criteria("p", "i", "c", "o", "d"), papers)
+    asked = []
+    crossref = SimpleNamespace(find_doi=lambda t, y: asked.append(t) or "10.5/found")
+    assert run_mod.fill_missing_dois(crossref, screening) == 1
+    assert asked == ["Needs DOI"]
+    assert papers[0].paper.doi == "10.5/found"
+    assert papers[0].attributes["doi_source"] == "Crossref (title match)"
+    assert run_mod.fill_missing_dois(None, screening) == 0

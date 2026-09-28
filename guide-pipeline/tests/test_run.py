@@ -80,7 +80,7 @@ def stubbed(monkeypatch):
     def fake_assemble(**kw):
         calls["assembled_title"] = kw["title"]
         return SimpleNamespace(
-            warnings=["check MeSH"], prospero=None, similar=[], rob_tool="RoB 2",
+            rationale="why", warnings=["check MeSH"], prospero=None, similar=[], rob_tool="RoB 2",
             timeline=[],
             strategies={"strategies": [SimpleNamespace(name="S", pubmed_query="q", count=7,
                                                        unverified_mesh=[])],

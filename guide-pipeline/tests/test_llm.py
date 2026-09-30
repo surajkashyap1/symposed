@@ -357,3 +357,34 @@ def test_sync_mode_runs_calls_in_parallel_threads():
     client = AnthropicClient(api_key="k", client=fake, batch=False, concurrency=1)
     out = run_many(client, [JsonCall("s", f"u{i}") for i in range(3)])
     assert out == [{"a": 0}, {"a": 1}, {"a": 2}] and len(fake.calls) == 3
+
+def _conn_error():
+    import anthropic
+    import httpx
+    return anthropic.APIConnectionError(request=httpx.Request("GET", "https://x"))
+
+
+def test_batch_poll_survives_a_dropped_connection():
+    class Flaky(FakeBatches):
+        failures = 2
+
+        def retrieve(self, batch_id):
+            if Flaky.failures:
+                Flaky.failures -= 1
+                raise _conn_error()
+            return super().retrieve(batch_id)
+
+    client, sleeps = batch_client(Flaky({"c0": reply('{"a": 0}')}, polls=1))
+    assert client.complete_json_many([JsonCall("s", "u")]) == [{"a": 0}]
+    assert len(sleeps) == 3  # one poll wait + two retry waits
+
+
+def test_batch_poll_gives_up_on_a_persistent_outage():
+    class Down(FakeBatches):
+        def retrieve(self, batch_id):
+            raise _conn_error()
+
+    client, _ = batch_client(Down({}))
+    client.poll_retries = 2
+    with pytest.raises(LLMError, match="unreachable"):
+        client.complete_json_many([JsonCall("s", "u")])

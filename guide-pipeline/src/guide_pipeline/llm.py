@@ -326,6 +326,7 @@ class AnthropicClient:
     concurrency: int = 4
     poll_seconds: float = 30.0
     batch_timeout_seconds: float = 24 * 3600
+    poll_retries: int = 10
     sleep: Callable[[float], None] = field(default=time.sleep, repr=False)
     progress: Optional[Callable[[str], None]] = field(default=None, repr=False)
 
@@ -409,17 +410,9 @@ class AnthropicClient:
                     self.progress(f"batch {batch.id} ({self.task}): {done}/{len(calls)} done")
                 self.sleep(self.poll_seconds)
                 waited += self.poll_seconds
-                batch = self._sdk().messages.batches.retrieve(batch.id)
-            results: dict[str, dict[str, Any] | LLMError] = {}
-            for item in self._sdk().messages.batches.results(batch.id):
-                kind = item.result.type
-                if kind == "succeeded":
-                    try:
-                        results[item.custom_id] = self._read(item.result.message, discount=0.5)
-                    except LLMError as exc:
-                        results[item.custom_id] = exc
-                else:
-                    results[item.custom_id] = LLMError(f"batch request {kind}")
+                batch_id = batch.id
+                batch = self._retrying(lambda: self._sdk().messages.batches.retrieve(batch_id))
+            results = self._retrying(lambda: self._collect(batch.id))
         except anthropic.APIConnectionError as exc:
             raise LLMError(f"Anthropic unreachable: {exc}") from exc
         except anthropic.APIStatusError as exc:
@@ -427,6 +420,40 @@ class AnthropicClient:
         # Results arrive in any order: key by custom_id, never by position.
         return [results.get(f"c{i}", LLMError("missing from batch results"))
                 for i in range(len(calls))]
+
+    def _collect(self, batch_id: str) -> dict[str, dict[str, Any] | LLMError]:
+        results: dict[str, dict[str, Any] | LLMError] = {}
+        for item in self._sdk().messages.batches.results(batch_id):
+            kind = item.result.type
+            if kind == "succeeded":
+                try:
+                    results[item.custom_id] = self._read(item.result.message, discount=0.5)
+                except LLMError as exc:
+                    results[item.custom_id] = exc
+            else:
+                results[item.custom_id] = LLMError(f"batch request {kind}")
+        return results
+
+    def _retrying(self, fetch: Callable[[], Any]) -> Any:
+        """A batch keeps running on Anthropic's side whatever happens here, so a
+        dropped connection or a 5xx/429 while polling is waited out, not fatal.
+        Other errors (and a persistent outage) still raise."""
+        import anthropic
+
+        for attempt in range(self.poll_retries + 1):
+            try:
+                return fetch()
+            except anthropic.APIConnectionError:
+                if attempt == self.poll_retries:
+                    raise
+            except anthropic.APIStatusError as exc:
+                if exc.status_code < 500 and exc.status_code != 429:
+                    raise
+                if attempt == self.poll_retries:
+                    raise
+            if self.progress:
+                self.progress(f"batch poll failed, retrying ({attempt + 1}/{self.poll_retries})")
+            self.sleep(self.poll_seconds)
 
 
 @dataclass

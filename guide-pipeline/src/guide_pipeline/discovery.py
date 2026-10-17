@@ -32,6 +32,7 @@ model only reads what it is given and writes questions and judgements.
 from __future__ import annotations
 
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timezone
@@ -64,6 +65,7 @@ from .sources.pubmed import Paper, PubMedClient
 
 FILTER_REVIEWS = '(systematic[sb] OR review[pt] OR "scoping review"[pt])'
 GAP_AXIS = "Gap in existing reviews"
+SHORTLIST = 3  # a main question plus two alternatives
 SKIP_SUFFIX = ".skip"  # an empty <PMID>.skip file: "we could not get this one"
 
 
@@ -394,6 +396,18 @@ class GapResult:
     candidates: list[Candidate]
 
 
+_R_REF = re.compile(r"\[?\bR(\d+)\b\]?")
+
+
+def _named_refs(text: str, readings: list[ReviewReading]) -> str:
+    """Our internal R1, R2 labels mean nothing to a user: name the review instead."""
+    def name(m: re.Match) -> str:
+        i = int(m.group(1))
+        return f"a review (PMID {readings[i - 1].pmid})" if 1 <= i <= len(readings) else "a review"
+    out = _R_REF.sub(name, text)
+    return out[0].upper() + out[1:] if out else out
+
+
 def _candidate(d: dict, axis: str, readings: list[ReviewReading]) -> Optional[Candidate]:
     title, query = str(d.get("title", "")).strip(), str(d.get("pubmed_query", "")).strip()
     if not title or not query:
@@ -403,7 +417,7 @@ def _candidate(d: dict, axis: str, readings: list[ReviewReading]) -> Optional[Ca
         digits = "".join(ch for ch in str(tag) if ch.isdigit())
         if digits and 1 <= int(digits) <= len(readings):
             refs.append(f"PMID {readings[int(digits) - 1].pmid}")
-    rationale = tidy(str(d.get("rationale", "")))
+    rationale = _named_refs(tidy(str(d.get("rationale", ""))), readings)
     if refs:
         rationale += f" (gap found in {', '.join(refs)})"
     return Candidate(title, axis, query, str(d.get("trials_query", "")).strip(), rationale)
@@ -424,7 +438,8 @@ def questions_from_gaps(llm: LLMClient, *, topic: TopicOption, readings: list[Re
         "and open questions above. A good question is one the reviews themselves point "
         "to, not a forced variation. Each must be answerable from published primary "
         "studies by this user's team. Cite the reviews it comes from as R numbers "
-        "(from_reviews). For each, give a PubMed concept query and plain keywords for "
+        "in from_reviews only: the rationale is read by the user, so describe the reviews "
+        "there in words and never write R numbers. For each, give a PubMed concept query and plain keywords for "
         "ClinicalTrials.gov (trials_query)."
         + (f"\n\nDo not repeat these questions: {'; '.join(avoid)}" if avoid else "")
     )
@@ -581,14 +596,33 @@ def discover(
             continue
         trial.route = "gaps"
         batch = gate(gaps.candidates, i)
-        if any(a.verdict.passed for a in batch):
+        passed = sum(a.verdict.passed for a in batch)
+        if passed >= SHORTLIST:
             break
-        # Not new enough as worded: use the axes as a lens on the same gaps.
-        say("  no gap question passed: reworking through the axes")
-        trial.route = "gaps+axes"
-        lens = axis_lens(llms["axis_lens"], rejected=batch, readings=trial.readings,
-                         prefs=prefs, avoid=tried())
-        if any(a.verdict.passed for a in gate(lens, i)):
+        # Too few new enough as worded (the guide needs a main question and two
+        # alternatives): use the axes as a lens on the same gaps. No new reviews.
+        rejected = [a for a in batch if not a.verdict.passed]
+        if rejected:
+            say(f"  {passed} gap question(s) passed: reworking the rest through the axes")
+            trial.route = "gaps+axes"
+            lens = axis_lens(llms["axis_lens"], rejected=rejected, readings=trial.readings,
+                             prefs=prefs, avoid=tried())
+            passed += sum(a.verdict.passed for a in gate(lens, i))
+        if 0 < passed < SHORTLIST:
+            # Still short of two alternatives: one batch from the axes on the same
+            # narrow topic, informed by the gaps (no new reviews to fetch).
+            say(f"  {passed} passing: topping up the shortlist from the axes")
+            try:
+                extra = generate_candidates(
+                    llms["candidate_generation"], f"{topic.name}. Known gaps: {gaps.summary}",
+                    landscape=landscape, min_n=th.candidate_titles_min,
+                    max_n=th.candidate_titles_max, min_axes=th.candidate_min_axes,
+                    max_per_axis=th.candidate_max_per_axis, avoid=tried(),
+                    preferences=prefs, batch=i)
+                gate(extra, i)
+            except LLMError as exc:
+                say(f"  top up failed: {exc}")
+        if passed:
             break
 
     survivors = rank_survivors(assessments)

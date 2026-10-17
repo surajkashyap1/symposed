@@ -24,15 +24,19 @@ from typing import Any, Callable, Optional
 
 import httpx
 
+from . import alternatives as alt_mod
 from .candidates import (
     FILTER_PRIMARY,
+    FOUND,
     FOUND_OTHER_TYPE,
     NEEDS_CONTACT,
+    Candidate,
     ScreenResult,
+    assess_candidate,
     screen_candidates,
 )
-from .gates import SYSTEMATIC, records_cap
 from .deliver import build_outputs
+from .gates import SYSTEMATIC, records_cap
 from .discovery import Discovery, FinalCheck, FullTextStore, discover, final_check
 from .guide_content import assemble
 from .guide_model import build_model
@@ -90,6 +94,8 @@ class RunReport:
     pack_path: str = ""  # zip of the PDF and companion files
     discovery: Optional[Discovery] = None  # review led discovery (guide v2)
     final_checks: list[FinalCheck] = field(default_factory=list)
+    alternatives: list[alt_mod.Alternative] = field(default_factory=list)
+    swap: bool = False  # a re-run on an alternative the user chose
     seconds: dict[str, float] = field(default_factory=dict)
     metrics: dict[str, Any] = field(default_factory=dict)
     selection: Optional[Selection] = None
@@ -211,6 +217,7 @@ def run_request(
     avoid_titles: tuple[str, ...] = (),
     screenshots: bool = True,
     store: Optional[FullTextStore] = None,
+    forced: Optional[Candidate] = None,
 ) -> RunReport:
     """One request end to end.
 
@@ -218,6 +225,10 @@ def run_request(
     from the gaps in the closest existing reviews and the chosen question gets a
     final check against the reviews nearest to it. Either may raise
     `discovery.AwaitingFullTexts`; run the request again once the files are in.
+
+    `forced` is a swap: the user chose one of their alternatives. Its novelty
+    checks (gates, PROSPERO) are re-run today, and if it still passes the full
+    guide is written for it, with no new alternatives.
     """
     say = progress or (lambda _m: None)
     th = settings.thresholds
@@ -238,7 +249,19 @@ def run_request(
         openalex=getattr(sources, "openalex", None)))
 
     discovery: Optional[Discovery] = None
-    if settings.discovery_mode == "reviews" and store is not None:
+    if forced is not None:
+        say(f"Swap: re-checking {forced.title!r} before writing its guide")
+        a = timed("candidates", lambda: assess_candidate(
+            sources.pubmed, sources.clinicaltrials, mirror, forced, th,
+            mirror_max_age_days=settings.prospero_max_age_days,
+            publication_type=prefs.publication_type, collaborators=prefs.collaborators))
+        ok = a.verdict.passed
+        screen = ScreenResult([a], [a] if ok else [], a if ok else None, batches=1,
+                              outcome=FOUND if ok else NEEDS_CONTACT,
+                              contact_reason="" if ok else
+                              "the alternative no longer passes our checks: "
+                              + "; ".join(a.verdict.reasons))
+    elif settings.discovery_mode == "reviews" and store is not None:
         say("Finding topics and the closest existing reviews...")
         discovery = timed("candidates", lambda: discover(
             llms=llms, pubmed=sources.pubmed, clinicaltrials=sources.clinicaltrials,
@@ -286,7 +309,7 @@ def run_request(
     initial = rank([score_candidate(a, recent_share=shares[a.candidate.title], **score_kw)
                     for a in pool])
     tied = tied_leaders(initial, margin=th.score_margin, max_tied=th.max_tied)
-    if discovery is not None:
+    if discovery is not None and forced is None:
         # Final check, best score first: read the reviews closest to the title and
         # ask whether it is new, publishable and realistic. The first to pass goes on.
         chosen = None
@@ -386,8 +409,21 @@ def run_request(
         proforma=request.proforma, search_date=search_date, pubmed=sources.pubmed,
         llms=llms, screened_all=len(screening.papers) >= len(retrieval.papers)))
     report.content = content
+    report.swap = forced is not None
+    if not report.swap:
+        failed = {c.title for c in report.final_checks if not c.passed}
+        picked = alt_mod.pick(initial, winner_title=top.candidate.title, exclude=failed)
+        say(f"Writing up {len(picked)} alternative question(s)...")
+        report.alternatives = timed("guide", lambda: alt_mod.build(
+            picked, criteria_llm=llms["criteria_writing"],
+            publication_type=report.publication_type, review_years=th.review_years))
+        if len(report.alternatives) < 2:
+            content.warnings.append(
+                f"Only {len(report.alternatives)} alternative question(s) passed the gates: "
+                "the shortlist page offers fewer than two.")
     model = build_model(content, proforma=request.proforma, retrieval_query=retrieval.query,
-                        retrieval_count=retrieval.identified)
+                        retrieval_count=retrieval.identified,
+                        alternatives=[a.as_dict() for a in report.alternatives])
     say("Rendering the PDF guide, tracker, protocol and PROSPERO draft...")
     outputs = timed("guide", lambda: build_outputs(workspace, model, screenshots=screenshots,
                                                    say=say))
@@ -404,6 +440,9 @@ def run_request(
         "selection": selection.as_dict(),
         "discovery": discovery.as_dict() if discovery else None,
         "final_checks": [c.as_dict() for c in report.final_checks],
+        "alternatives": [a.as_dict() for a in report.alternatives],
+        "swap": report.swap,
+        "proforma": request.proforma,
         "guide": {
             "rationale": content.rationale,
             "warnings_for_reviewer": content.warnings,

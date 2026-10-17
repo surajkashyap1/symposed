@@ -211,8 +211,8 @@ def _clean_attr(v: Any) -> str:
 
 # -- the whole model ----------------------------------------------------------------
 def build_model(content: Any, *, proforma: Optional[dict] = None,
-                retrieval_query: str = "", retrieval_count: Optional[int] = None
-                ) -> dict[str, Any]:
+                retrieval_query: str = "", retrieval_count: Optional[int] = None,
+                alternatives: Optional[list[dict]] = None) -> dict[str, Any]:
     c = content
     p = proforma or {}
     systematic = c.systematic
@@ -314,6 +314,7 @@ def build_model(content: Any, *, proforma: Optional[dict] = None,
         "search_appendix": c.search_appendix,
         "warnings": list(c.warnings),
         "screenshots": {},
+        "alternatives": list(alternatives or []),
     }
     corpus = " ".join([
         c.rationale, c.analysis, c.aims, " ".join(c.objectives), crit.as_text(),

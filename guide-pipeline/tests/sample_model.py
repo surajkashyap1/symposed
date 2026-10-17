@@ -135,6 +135,16 @@ def sample_model(systematic: bool = True) -> dict:
         "journals": [["Critical Care Medicine", 5], ["Intensive Care Medicine", 4]],
         "search_appendix": [{"source": "PubMed", "query": q, "count": 640, "run_at": "2026-10-17T10:00:00"}],
         "warnings": [], "screenshots": {},
+        "alternatives": [
+            {"number": i, "title": t, "axis": "Gap in existing reviews",
+             "rationale": "The closest reviews looked only at adults under 65, so this group is missing.",
+             "why_novel": "On 17/10/2026 we found no recent systematic review in PubMed (last 10 years) and no close match on PROSPERO.",
+             "eligible_estimate": e, "records_to_screen": r, "search_query": q, "search_count": r,
+             "prospero_checked_on": "17/10/2026", "prospero_verdict": "clear", "trials_query": "vitamin d icu",
+             "pico": [["Population", "Adults over 65 in intensive care"], ["Intervention or exposure", "Vitamin D"],
+                      ["Comparator", "Placebo"], ["Outcomes", "Delirium"], ["Study designs", "Randomised trials"]]}
+            for i, t, e, r in ((1, "Vitamin D and delirium in older adults in intensive care", 22, 180),
+                               (2, "Vitamin D and ventilator-associated pneumonia in critically ill adults", 31, 260))],
         "glossary": [{"term": "PICO", "definition": "Population, Intervention, Comparator, Outcome."},
                      {"term": "Cholecalciferol", "definition": "The form of vitamin D made in the skin, also called vitamin D3."}],
     }

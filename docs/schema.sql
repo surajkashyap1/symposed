@@ -460,7 +460,7 @@ create table guide_title_registry (
   title             text not null,
   first_run_id      uuid references guide_runs(id) on delete set null,
   order_id          uuid references guide_orders(id) on delete set null,
-  status            text not null default 'offered',  -- offered | approved | rejected
+  status            text not null default 'offered',  -- offered | approved | rejected | alternative (held 30 days)
   created_at        timestamptz not null default now()
 );
 

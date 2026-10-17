@@ -137,7 +137,9 @@ def test_found_run_writes_guide_results_and_metrics(tmp_path, monkeypatch, stubb
     assert report.guide_path.endswith("guide.pdf")
     assert report.pack_path.endswith("guide-pack.zip")
     assert stubbed["assembled_title"] == "Winner"
-    assert report.metrics["guide_warnings"] == 1 and report.metrics["strategy_counts"] == [7]
+    # one MeSH warning, plus: the other candidate was rejected, so no alternatives
+    assert report.metrics["guide_warnings"] == 2 and report.metrics["strategy_counts"] == [7]
+    assert report.alternatives == [] and not report.swap
     assert stubbed["query"].startswith("(heart failure[tiab]) NOT (review[pt]")  # SR filter
     assert stubbed["max_records"] == 400  # team of 2 ("1 other person")
     assert stubbed["concept_query"] == "heart failure[tiab]"  # preprints use concepts
@@ -309,3 +311,34 @@ def test_reviews_mode_needs_contact_when_every_final_check_fails(tmp_path, monke
     assert report.outcome == "needs_contact"
     assert "narrow it" in report.screen.contact_reason
     assert report.metrics["final_checks_failed"] == 1
+
+
+def _swap(tmp_path, monkeypatch, outcome):
+    from guide_pipeline.candidates import Candidate
+
+    def fake_assess(pubmed, ct, mirror, cand, th, **kw):
+        return assessment(cand.title, outcome)
+
+    monkeypatch.setattr(run_mod, "assess_candidate", fake_assess)
+    monkeypatch.setattr(run_mod, "screen_candidates",
+                        lambda *a, **k: pytest.fail("a swap must not search for new questions"))
+    llms = {t: object() for t in ("criteria_writing", "attribute_extraction", "screening",
+                                  "outcome_grouping", "tie_break")}
+    sources = SimpleNamespace(pubmed=SimpleNamespace(count=lambda q, **kw: 15),
+                              clinicaltrials=None, europepmc=None)
+    return run_mod.run_request(
+        from_proforma(FORM, order_id="order-1"), settings=settings_for(tmp_path),
+        sources=sources, mirror=fresh_mirror(tmp_path), llms=llms, meter=UsageMeter(),
+        forced=Candidate("Alternative B", "Gap in existing reviews", "alt_q"))
+
+
+def test_swap_rechecks_the_alternative_then_writes_its_guide(tmp_path, monkeypatch, stubbed):
+    report = _swap(tmp_path, monkeypatch, "pass")
+    assert report.outcome == FOUND and report.title == "Alternative B"
+    assert report.swap and report.alternatives == []  # no new alternatives on a swap
+
+
+def test_swap_stops_if_the_alternative_no_longer_passes(tmp_path, monkeypatch, stubbed):
+    report = _swap(tmp_path, monkeypatch, "reject")
+    assert report.outcome == "needs_contact"
+    assert "no longer passes" in report.screen.contact_reason

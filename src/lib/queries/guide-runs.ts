@@ -20,6 +20,23 @@ export type GateRow = {
 
 export type SimilarWork = { title: string; url: string; score: number };
 
+// Guide v2: the two questions offered as swaps, reserved for this customer for
+// 30 days, and the final novelty check on the chosen title (review led runs).
+export type Alternative = {
+  number: number;
+  title: string;
+  eligible_estimate: number;
+  records_to_screen: number;
+  prospero_checked_on: string;
+  why_novel: string;
+};
+export type FinalCheck = {
+  title: string;
+  passed: boolean;
+  reasons: Record<string, string>;
+  suggested_change: string;
+};
+
 // Everything Stage 6 shows for an order's latest pipeline run, or null if the
 // pipeline has not run for it yet. The draft docx itself is not loaded here
 // (it is downloaded through its own route).
@@ -88,6 +105,9 @@ export async function latestRunReview(orderId: string) {
     similar: (guide.similar_work ?? []) as SimilarWork[],
     warnings: (guide.warnings_for_reviewer ?? []) as string[],
     error: typeof results.error === "string" ? results.error : "",
+    alternatives: (results.alternatives ?? []) as Alternative[],
+    finalChecks: (results.final_checks ?? []) as FinalCheck[],
+    swap: results.swap === true,
   };
 }
 

@@ -513,7 +513,7 @@ export const guideTitleRegistry = pgTable("guide_title_registry", {
   title: text("title").notNull(),
   firstRunId: uuid("first_run_id").references(() => guideRuns.id, { onDelete: "set null" }),
   orderId: uuid("order_id").references(() => guideOrders.id, { onDelete: "set null" }),
-  status: text("status").notNull().default("offered"), // offered | approved | rejected
+  status: text("status").notNull().default("offered"), // offered | approved | rejected | alternative (held 30 days)
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

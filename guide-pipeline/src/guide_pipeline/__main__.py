@@ -440,6 +440,79 @@ def run_cmd(path: str, limit: int | None = None, abstracts_ok: bool = False) -> 
     return 0
 
 
+def swap_cmd(run_folder: str, number: int, *, limit: int | None = None,
+             save: bool = False) -> int:
+    """A customer chose alternative `number` from a delivered guide.
+
+    Re-runs the novelty checks (gates and PROSPERO) on that title today, since
+    the shortlist date is weeks old, and if it still passes writes its full
+    guide. With --save the run is recorded for the order like a batch run, for
+    review and delivery in /admin/guides.
+    """
+    import json as _json
+
+    from .candidates import Candidate
+
+    results = _json.loads((_Path(run_folder) / "results.json").read_text(encoding="utf-8"))
+    alts = {a["number"]: a for a in results.get("alternatives") or []}
+    if number not in alts:
+        print(f"  No alternative {number} in {run_folder} (has: {sorted(alts) or 'none'})")
+        return 2
+    if "proforma" not in results:
+        print("  This run predates swaps (no proforma saved in results.json).")
+        return 2
+    a = alts[number]
+    forced = Candidate(a["title"], a.get("axis") or "Swap", a["search_query"],
+                       a.get("trials_query", ""), a.get("rationale", ""))
+    request = from_proforma(results["proforma"], order_id=str(results.get("order_id") or ""))
+    settings = Settings.load()
+    sources = build_sources(settings)
+    meter = UsageMeter()
+    llms = {t: _llm(settings, t, meter) for t in RUN_TASKS}
+    if any(v is None for v in llms.values()):
+        return 2
+    print(f"Swap for order {request.order_id or '(none)'}: alternative {number}\n  {a['title']}")
+    print(f"  shortlist checked {a.get('prospero_checked_on')}; re-checking today\n")
+    conn = run_id = None
+    if save:
+        from . import db
+        from .run import _git_version
+
+        if not settings.database_url:
+            print("  --save needs PIPELINE_DATABASE_URL (or STAGING_DATABASE_URL).")
+            return 2
+        conn = db.connect(settings.database_url)
+        run_id = db.start_run(conn, request.order_id or None, _git_version())
+    mirror = ProsperoMirror(settings.prospero_db)
+    try:
+        report = run_request(request, settings=settings, sources=sources, mirror=mirror,
+                             llms=llms, meter=meter, limit=limit, forced=forced,
+                             progress=lambda m: print(f"  {m}", flush=True))
+        if conn is not None:
+            from . import db
+
+            pack = _Path(report.pack_path).read_bytes() if report.pack_path else None
+            db.save_run(conn, run_id, report, docx=pack)
+    except Exception as exc:
+        if conn is not None:
+            from . import db
+
+            db.fail_run(conn, run_id, f"{type(exc).__name__}: {exc}")
+        raise
+    finally:
+        mirror.close()
+        if conn is not None:
+            conn.close()
+    print(f"\n  Outcome: {report.outcome.upper()}")
+    if report.outcome != "found":
+        print(f"  {report.screen.contact_reason}")
+        print("  Tell the customer before charging: the question needs refining first.")
+    else:
+        print(f"  Guide: {report.guide_path}\n  Files: {report.pack_path}")
+    _print_cost(meter)
+    return 0 if report.outcome == "found" else 1
+
+
 def batch_cmd(limit: int | None = None, max_orders: int | None = None) -> int:
     """The Friday batch: refresh PROSPERO, then run every order that needs a run."""
     from . import db
@@ -641,6 +714,21 @@ def main(argv: list[str] | None = None) -> int:
                   "still missing instead of pausing.")
             return 2
         return run_cmd(rest[0], limit=limit, abstracts_ok=abstracts_ok)
+    if argv and argv[0] == "swap":
+        rest = argv[1:]
+        limit = None
+        if "--limit" in rest:
+            i = rest.index("--limit")
+            limit = int(rest[i + 1])
+            rest = rest[:i] + rest[i + 2:]
+        save = "--save" in rest
+        rest = [x for x in rest if x != "--save"]
+        if len(rest) != 2 or not rest[1].isdigit():
+            print("Usage: python -m guide_pipeline swap <run folder> <1|2> [--save] [--limit N]\n"
+                  "  Re-checks the chosen alternative today, then writes its full guide.\n"
+                  "  --save records the run for the order (review it in /admin/guides).")
+            return 2
+        return swap_cmd(rest[0], int(rest[1]), limit=limit, save=save)
     if argv and argv[0] == "batch":
         rest = argv[1:]
         opts = {}

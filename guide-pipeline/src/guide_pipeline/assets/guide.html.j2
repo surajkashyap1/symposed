@@ -51,6 +51,9 @@ team, and you will learn more about the literature as you go.</p></div>
     {%- for st in m.steps %}
     <li><span class="tn" style="background: {{ colour(st.number) }}">{{ st.number }}</span><a href="#step-{{ st.number }}">{{ st.name }}</a></li>
     {%- endfor %}
+    {%- if m.alternatives %}
+    <li><a href="#alternatives">Your alternative questions</a></li>
+    {%- endif %}
     <li><a href="#glossary">Appendix A. Glossary of terms</a></li>
     <li><a href="#search-log">Appendix B. Every search we ran</a></li>
     {%- if m.references %}<li><a href="#references">Appendix C. References</a></li>{% endif %}
@@ -125,6 +128,14 @@ team, and you will learn more about the literature as you go.</p></div>
     <div class="stat"><b>{{ m.profile.team }}</b><span>people we recommend, so two screen every paper</span></div>
     <div class="stat"><b>{{ m.timeline_assumptions.total_weeks }}</b><span>weeks at {{ "%g"|format(m.timeline_assumptions.hours_per_week_each) }} hours a week each</span></div>
   </div>
+
+  {%- if m.alternatives %}
+  <div class="box box-tip"><div class="box-title">Not quite right? You have alternatives</div>
+  <p>This guide is built around the question above. We also found
+  {{ m.alternatives|length }} other question{{ "s" if m.alternatives|length > 1 else "" }} you
+  could switch to within {{ hold_days }} days. See <a href="#alternatives">Your alternative
+  questions</a> near the end of this guide.</p></div>
+  {%- endif %}
 
   <h3>Your nine steps</h3>
   <div class="flow">
@@ -536,6 +547,49 @@ team, and you will learn more about the literature as you go.</p></div>
   <li>Your completed reporting checklist is ready to upload.</li>
   <li>Everyone who did the work agreed the author list and order.</li></ul></div>
 </section>
+
+{# ============================================================== alternatives #}
+{%- if m.alternatives %}
+<section class="section" id="alternatives">
+  <h1 class="section-title">Your alternative questions</h1>
+  {%- set many = m.alternatives|length > 1 %}
+  <p class="lead">Your guide is written for your main question. While choosing it we also found
+  {{ "two other questions" if many else "one other question" }} that passed the same checks.
+  You can switch to {{ "either of them" if many else "it" }}.</p>
+  <div class="box box-tip"><div class="box-title">Want to switch?</div>
+  <p>If you would rather work on {{ "one of these questions" if many else "this question" }}, tell
+  us within {{ hold_days }} days of receiving this guide and we will write the full guide for it
+  for {{ swap_price }}. We hold {{ "them" if many else "it" }} for you for those {{ hold_days }}
+  days and do not offer {{ "them" if many else "it" }} to anyone else. Before we write the full
+  guide we check again that the question is still new, because the check below is dated.</p>
+  <p>If your main question turns out to have been published, switching to an alternative is
+  also one way we can put things right under our commitment.</p></div>
+  {%- for a in m.alternatives %}
+  <div class="keep">
+  <div class="banner" style="background: {{ colour(a.number + 2) }}; margin-top: 10pt">
+    <div class="num">{{ "AB"[a.number - 1] if a.number <= 2 else a.number }}</div>
+    <div><div class="label">Alternative {{ a.number }}</div>
+    <h3 style="color:#fff; margin: 2pt 0; font-size: 12.5pt">{{ a.title }}</h3></div>
+  </div>
+  {%- if a.pico %}
+  <table class="keyval compact slate"><thead><tr><th>Part</th><th>For this question</th></tr></thead><tbody>
+  {%- for k, v in a.pico %}<tr><td>{{ k }}</td><td>{{ v }}</td></tr>{% endfor %}
+  </tbody></table>
+  {%- endif %}
+  </div>
+  <p><strong>Why it matters.</strong> {{ a.rationale }}</p>
+  <p><strong>Why it is new.</strong> {{ a.why_novel }}</p>
+  <div class="stats">
+    <div class="stat"><b>{{ "{:,}".format(a.eligible_estimate) }}</b><span>primary studies on these concepts (an estimate before screening)</span></div>
+    <div class="stat"><b>{{ "{:,}".format(a.records_to_screen) }}</b><span>records you can expect to screen in PubMed alone</span></div>
+    <div class="stat"><b>{{ a.prospero_checked_on }}</b><span>date we checked PROSPERO and PubMed</span></div>
+  </div>
+  <div class="search keep"><div class="search-head"><span class="sn">Best search strategy</span>
+    <span>{{ "{:,}".format(a.search_count) }} PubMed records · <a href="{{ pubmed_url(a.search_query) }}">open in PubMed</a></span></div>
+    <div class="search-body"><span class="query">{{ a.search_query }}</span></div></div>
+  {%- endfor %}
+</section>
+{%- endif %}
 
 {# ================================================================= appendix #}
 <section class="section" id="glossary">

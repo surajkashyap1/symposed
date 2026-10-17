@@ -75,6 +75,7 @@ export function GuideRunPanel({ review }: { review: RunReview | null }) {
             <p className="text-base font-medium leading-snug">{run.title}</p>
             <p className="text-xs text-muted-foreground">
               {run.publicationType} · axis: {run.axis}
+              {review.swap && " · swap to an alternative (novelty re-checked today)"}
             </p>
             {review.rationale && (
               <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed">{review.rationale}</p>
@@ -104,6 +105,49 @@ export function GuideRunPanel({ review }: { review: RunReview | null }) {
               ))}
             </div>
           </details>
+
+          {review.finalChecks.length > 0 && (
+            <details>
+              <summary className="cursor-pointer text-xs font-medium">
+                Final check against the closest reviews ({review.finalChecks.length})
+              </summary>
+              <ul className="mt-2 flex flex-col gap-2 text-xs">
+                {review.finalChecks.map((c) => (
+                  <li key={c.title}>
+                    <span className="font-medium">{c.passed ? "Passed" : "Failed"}:</span> {c.title}
+                    <ul className="mt-1 list-disc pl-5 text-muted-foreground">
+                      {Object.entries(c.reasons).map(([k, v]) => (
+                        <li key={k}><span className="capitalize">{k}</span>: {v}</li>
+                      ))}
+                      {c.suggested_change && <li>Suggested change: {c.suggested_change}</li>}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          {review.alternatives.length > 0 && (
+            <details>
+              <summary className="cursor-pointer text-xs font-medium">
+                Alternatives offered ({review.alternatives.length}, held for this customer for 30 days)
+              </summary>
+              <ol className="mt-2 flex list-decimal flex-col gap-1 pl-5 text-xs">
+                {review.alternatives.map((a) => (
+                  <li key={a.number}>
+                    <span className="font-medium">{a.title}</span>{" "}
+                    <span className="text-muted-foreground">
+                      ({fmt(a.eligible_estimate)} primary studies, {fmt(a.records_to_screen)} to
+                      screen, checked {a.prospero_checked_on})
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-1 text-xs text-muted-foreground">
+                On a swap, run <code>python -m guide_pipeline swap &lt;run folder&gt; &lt;number&gt; --save</code>.
+              </p>
+            </details>
+          )}
 
           <details>
             <summary className="cursor-pointer text-xs font-medium">

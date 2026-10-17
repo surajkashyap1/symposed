@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 from docx import Document
 
-from guide_pipeline.candidates import RequestPreferences
+from guide_pipeline.candidates import CANDIDATES_SCHEMA, RequestPreferences
 from guide_pipeline.discovery import (
     FINAL_SCHEMA,
     GAP_AXIS,
@@ -102,9 +102,9 @@ class SchemaLLM:
     def complete_json(self, system, user, schema=None, cache_system=False):
         name = {id(TOPICS_SCHEMA): "topics", id(READING_SCHEMA): "reading",
                 id(GAP_SCHEMA): "gaps", id(LENS_SCHEMA): "lens",
-                id(FINAL_SCHEMA): "final"}[id(schema)]
+                id(FINAL_SCHEMA): "final", id(CANDIDATES_SCHEMA): "axes"}[id(schema)]
         self.calls.append((name, user))
-        queue = self.replies[name]
+        queue = self.replies.get(name) or [{"candidates": []}]  # axes top up: nothing
         return queue.pop(0) if len(queue) > 1 else queue[0]
 
 
@@ -284,3 +284,34 @@ def test_cached_llm_replays_the_same_request_for_free(tmp_path):
     assert CachedLLM(Inner(), tmp_path, task="t").complete_json("s", "u") == {"n": 1}
     assert c.complete_json("s", "different") == {"n": 2}
     assert c.model == "m"  # everything else passes through
+
+
+def test_too_few_passing_gap_questions_are_topped_up_through_the_axes(tmp_path):
+    pm = FakePubMed(reviews={"af_q": 3, "busy_q": 3}, primary={"af_q": 900, "busy_q": 900})
+    orig = pm.count
+    pm.count = lambda q, **kw: (5 if "AND systematic[sb]" in q and "busy_q" in q
+                                else orig(q, **kw))
+    reply = gap(titles=("Passes",))
+    reply["candidates"].append({"title": "Already reviewed", "pubmed_query": "busy_q x",
+                                "trials_query": "x", "rationale": "r", "from_reviews": []})
+    lens = {"candidates": [{"title": "Reworked", "axis": "Unexamined subgroup",
+                            "pubmed_query": "af_q y", "trials_query": "y", "rationale": "r",
+                            "from_reviews": []}]}
+    llm = SchemaLLM(topics=[topics_reply("af_q", [])], reading=[READ], gaps=[reply],
+                    lens=[lens])
+    d = run_discover(tmp_path, llm, pm)
+    assert d.trials[0].route == "gaps+axes"
+    assert any(n == "axes" for n, _ in llm.calls)  # still short of 3: one axes batch tried
+    assert {a.candidate.title for a in d.screen.survivors} == {"Passes", "Reworked"}
+    lens_prompt = [u for n, u in llm.calls if n == "lens"][0]
+    assert "Already reviewed" in lens_prompt and "Passes" not in lens_prompt.split("did not pass")[1].split("The reviews")[0]
+
+
+def test_internal_review_labels_never_reach_the_user(tmp_path):
+    reply = gap()
+    reply["candidates"][0]["rationale"] = "R1 left older adults out, and [R2] agrees."
+    llm = SchemaLLM(topics=[topics_reply("af_q", [])], reading=[READ], gaps=[reply])
+    pm = FakePubMed(reviews={"af_q": 2}, primary={"af_q": 900})
+    d = run_discover(tmp_path, llm, pm)
+    r = d.screen.top.candidate.rationale
+    assert "R1" not in r and "[R2]" not in r and r.startswith("A review (PMID ")

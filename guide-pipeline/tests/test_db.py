@@ -55,7 +55,9 @@ def test_orders_and_avoid_list():
     assert "last_verdict.action = 'rejected'" in sql and "last_run.status = 'failed'" in sql
     conn = FakeConn(rows=[("Taken elsewhere",)])
     assert db.titles_to_avoid(conn, "o1") == ["Taken elsewhere"]
-    assert conn.statements[0][1] == ("o1",)
+    sql, params = conn.statements[0]
+    assert params == ("o1", 30)  # another customer's alternatives are held 30 days
+    assert "status <> 'alternative'" in sql and "make_interval(days =>" in sql
 
 
 def test_start_run_marks_order_in_progress():
@@ -109,9 +111,20 @@ def test_save_run_writes_every_record_in_one_transaction(tmp_path):
     assert paper[1:3] == ("PPR1", "PPR")  # preprint id kept as such
     assert conn.sql("insert into guide_prospero_checks")
     registry = conn.sql("insert into guide_title_registry")[0]
-    assert "on conflict (normalized_title) do nothing" in registry[0]
+    assert "on conflict (normalized_title) do update" in registry[0]  # a swap takes over
+    assert "status = 'alternative'" in registry[0]  # ...only its own reservation
     assert registry[1][0] == "winner" and registry[1][3] == "o1"
     assert conn.commits == 1  # a single transaction
+
+
+def test_alternatives_are_reserved_for_the_customer(tmp_path):
+    conn = FakeConn()
+    report = _report(tmp_path)
+    report.alternatives = [SimpleNamespace(title="Alt one"), SimpleNamespace(title="Alt two")]
+    db.save_run(conn, "run-1", report, docx=None)
+    alts = conn.sql("insert into guide_title_registry")[1:]
+    assert [a[1][1] for a in alts] == ["Alt one", "Alt two"]
+    assert all("'alternative'" in a[0] and a[1][3] == "o1" for a in alts)
 
 
 def test_host_is_shown_without_credentials():

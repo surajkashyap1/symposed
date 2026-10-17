@@ -126,6 +126,15 @@ v1 above was the cut-down slice. We are now aligning it with the full
   publishable as a review, realistic? Reader Sonnet 5.5, decider Opus 5.5.
   `DISCOVERY_MODE=axes` restores the v1 method.
 
+- **Guide v2, step 4: two alternatives and the swap** ✅ (`alternatives.py`):
+  every guide ends with a shortlist page of the next two best scored questions
+  that passed the gates (PICO, why it matters, why it is new, eligible studies,
+  screening volume, best search, PROSPERO check date) and the offer: switch
+  within 30 days for £5. Alternatives are stored in `guide_title_registry` with
+  status `alternative` and held for that customer for 30 days. On a swap:
+  `python -m guide_pipeline swap <run folder> <1|2> [--save]` re-runs the gates
+  and PROSPERO check today and only then writes the full guide.
+
 ## Supplying full texts
 
 A review led run stops when it needs reviews that are not open access:

@@ -16,6 +16,7 @@ from urllib.parse import quote_plus, urlparse
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 
 from . import diagrams
+from .alternatives import HOLD_DAYS, SWAP_PRICE
 from .guide_content import (
     ACKNOWLEDGEMENT_WORDING,
     AUTHOR_AI_NOTE,
@@ -98,6 +99,8 @@ def render_html(m: dict[str, Any]) -> str:
         acknowledgement=ACKNOWLEDGEMENT_WORDING,
         ai_note=AUTHOR_AI_NOTE,
         collaboration=COLLABORATION_PROMPT,
+        hold_days=HOLD_DAYS,
+        swap_price=SWAP_PRICE,
         gantt_svg=diagrams.gantt([{"number": t["number"], "name": t["name"],
                                    "start_week": t["start_week"], "end_week": t["end_week"]}
                                   for t in m["timeline"]]),

@@ -72,13 +72,19 @@ def orders_to_process(conn) -> list[Order]:
         return [Order(str(r[0]), json.loads(r[1])) for r in cur.fetchall()]
 
 
-def titles_to_avoid(conn, order_id: str) -> list[str]:
-    """Titles offered to other customers, plus titles rejected for this order."""
+def titles_to_avoid(conn, order_id: str, *, hold_days: int = 30) -> list[str]:
+    """Titles offered to other customers, plus titles rejected for this order.
+
+    An alternative shown to another customer is held for them for `hold_days`
+    (their swap window) and then returns to the pool.
+    """
     with conn.cursor() as cur:
         cur.execute(
             "select title from guide_title_registry "
-            "where order_id is distinct from %s or status = 'rejected'",
-            (order_id,),
+            "where (order_id is distinct from %s and (status <> 'alternative' "
+            "       or created_at > now() - make_interval(days => %s))) "
+            "   or status = 'rejected'",
+            (order_id, hold_days),
         )
         return [r[0] for r in cur.fetchall()]
 
@@ -189,9 +195,21 @@ def save_run(conn, run_id: str, report: Any, *, docx: Optional[bytes]) -> None:
             )
         if report.title:
             # One question, one customer: the primary key refuses a second offer.
+            # A swap turns the reserved alternative into this order's offered title.
             cur.execute(
                 "insert into guide_title_registry (normalized_title, title, first_run_id, "
-                "order_id) values (%s, %s, %s, %s) on conflict (normalized_title) do nothing",
+                "order_id) values (%s, %s, %s, %s) on conflict (normalized_title) do update "
+                "set status = 'offered', first_run_id = excluded.first_run_id "
+                "where guide_title_registry.order_id = excluded.order_id "
+                "and guide_title_registry.status = 'alternative'",
                 (match_key(report.title), report.title, run_id, order_id),
+            )
+        for alt in getattr(report, "alternatives", []) or []:
+            # Reserved for this customer for their swap window (titles_to_avoid).
+            cur.execute(
+                "insert into guide_title_registry (normalized_title, title, first_run_id, "
+                "order_id, status) values (%s, %s, %s, %s, 'alternative') "
+                "on conflict (normalized_title) do nothing",
+                (match_key(alt.title), alt.title, run_id, order_id),
             )
     conn.commit()

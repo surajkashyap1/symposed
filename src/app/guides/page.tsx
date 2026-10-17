@@ -1,6 +1,9 @@
 import Link from "next/link";
 import {
   BookOpenCheck,
+  Footprints,
+  Handshake,
+  Trophy,
   ClipboardPen,
   FileSearch,
   Rocket,
@@ -15,6 +18,9 @@ import {
   HERO_DESCRIPTION,
   HOW_IT_WORKS_STEPS,
   METHOD_STATEMENT,
+  SUPERVISOR_HEADING,
+  SUPERVISOR_INTRO,
+  SUPERVISOR_POINTS,
   formatPounds,
 } from "@/lib/guides-meta";
 import {
@@ -34,6 +40,7 @@ export const metadata = {
 };
 
 const STEP_ICONS = [ClipboardPen, FileSearch, BookOpenCheck, Rocket];
+const SUPERVISOR_ICONS = [Footprints, Handshake, Trophy];
 
 function ReviewStars({ value }: { value: number }) {
   return (
@@ -124,6 +131,36 @@ export default async function GuidesPage() {
           <Link href="/guides/request" className={buttonVariants({ size: "lg" })}>
             Start your guide
           </Link>
+        </div>
+      </section>
+
+      {/* ---------------------------------------- no supervisor needed */}
+      <section className="border-t">
+        <div className="mx-auto w-full max-w-5xl px-6 py-12">
+          <h2 className="max-w-2xl font-heading text-2xl font-semibold tracking-tight [text-wrap:balance]">
+            {SUPERVISOR_HEADING}
+          </h2>
+          <p className="mt-3 max-w-2xl leading-relaxed text-muted-foreground">
+            {SUPERVISOR_INTRO}
+          </p>
+          <ol className="mt-8 grid gap-6 md:grid-cols-3">
+            {SUPERVISOR_POINTS.map(([lead, rest], i) => {
+              const Icon = SUPERVISOR_ICONS[i];
+              return (
+                <li key={lead} className="rounded-lg border bg-card p-5">
+                  <span className="inline-flex size-9 items-center justify-center rounded-md bg-primary/10">
+                    <Icon className="h-5 w-5 text-primary" aria-hidden />
+                  </span>
+                  <h3 className="mt-3 text-sm font-semibold text-foreground">
+                    {lead}
+                  </h3>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    {rest}
+                  </p>
+                </li>
+              );
+            })}
+          </ol>
         </div>
       </section>
 

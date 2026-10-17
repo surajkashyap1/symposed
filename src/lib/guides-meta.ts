@@ -122,6 +122,7 @@ export const GUIDE_PANELS: readonly GuidePanel[] = [
     title: "Systematic review",
     items: [
       ["A verified research question", "checked against published reviews and registered protocols"],
+      ["Your main research question, plus two alternatives", "you can switch to within 30 days"],
       ["The date your question was checked", "so you know exactly how current the check is"],
       ["A summary of similar published work", "and how your question differs from each"],
       ["Multiple complete search strategies", "with every search term, and a recommendation on which to use"],
@@ -244,6 +245,28 @@ export const LISTING_BENEFITS: [string, string][] = [
 export const BENEFITS_AVAILABILITY_NOTE =
   "These become available once you have posted your project on Symposed. Post it, and we will be in touch.";
 
+// Guides page section selling the "no supervisor needed to start" idea
+// (Suraj, 2026-10-17). Each item is [lead, explanation].
+export const SUPERVISOR_HEADING = "You do not need a supervisor to get started.";
+
+export const SUPERVISOR_INTRO =
+  "Most students wait for a supervisor before they start research, and many wait a long time. You can start without one. Supervisors are busy, and the projects they say yes to are the ones that are already moving.";
+
+export const SUPERVISOR_POINTS: PanelItem[] = [
+  [
+    "Start on your own terms.",
+    "Your guide gives you a checked question, the searches and a step by step plan, so you can begin this week rather than waiting for someone to find you a project.",
+  ],
+  [
+    "A defined project is an easy yes.",
+    "A supervisor is far more likely to help when you bring a clear question and a plan, and the work is already under way, than when you ask them to come up with a project for you.",
+  ],
+  [
+    "Finished work is the easiest yes of all.",
+    "If you have screened the papers and written the review, a supervisor only needs to check it and help you submit it to a journal. For them, that is close to a free publication.",
+  ],
+];
+
 // §3.1.2 — four steps, shown with icons. Copy avoids implying that a person
 // performs the literature searching manually (amendment §4.3 boundary).
 export const HOW_IT_WORKS_STEPS: [string, string][] = [
@@ -269,7 +292,11 @@ export const HOW_IT_WORKS_STEPS: [string, string][] = [
 export const GUIDE_FAQ: [string, string][] = [
   [
     "Do I need a supervisor to start?",
-    "No. That is the point of the guide. It also tells you exactly who to approach in your field when you do need one, with a template for the email.",
+    "No. That is the point of the guide. You can start the work on your own, and a supervisor is far more likely to help once your project is defined and under way, or finished and ready to submit. The guide also tells you who to approach in your field when you want one, with a template for the email.",
+  ],
+  [
+    "What if I would rather work on a different question?",
+    "Your guide comes with two alternative questions, each with its search strategy and feasibility numbers. If you would rather pursue one of them, tell us within 30 days and we will produce the full guide for it for £5. We hold your alternatives for you during those 30 days and do not offer them to anyone else.",
   ],
   [
     "Will this write my paper for me?",

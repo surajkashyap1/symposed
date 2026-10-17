@@ -26,7 +26,7 @@ def test_defaults(monkeypatch):
     _clear_env(monkeypatch)
     settings = Settings.load()
     assert settings.llm_provider == "anthropic"
-    assert settings.anthropic_model == "claude-sonnet-5"
+    assert settings.anthropic_model == "claude-sonnet-5-5"
     assert settings.ncbi_api_key is None
     assert settings.output_dir.name == "output"
     assert settings.thresholds == Thresholds()

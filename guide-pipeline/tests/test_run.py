@@ -261,3 +261,51 @@ def test_missing_dois_filled_from_crossref_for_plausible_papers_only():
     assert papers[0].paper.doi == "10.5/found"
     assert papers[0].attributes["doi_source"] == "Crossref (title match)"
     assert run_mod.fill_missing_dois(None, screening) == 0
+
+
+def _reviews_mode(tmp_path, monkeypatch, screen_result, checks):
+    from dataclasses import replace as _replace
+
+    from guide_pipeline.discovery import Discovery, FinalCheck
+
+    monkeypatch.setattr(run_mod, "discover",
+                        lambda **kw: Discovery(topics=[], trials=[], screen=screen_result))
+    seen = []
+
+    def fake_check(**kw):
+        title = kw["assessment"].candidate.title
+        seen.append(title)
+        ok = checks[title]
+        return FinalCheck(title, [], [], ok, True, True, {}, "" if ok else "narrow it")
+
+    monkeypatch.setattr(run_mod, "final_check", fake_check)
+    settings = _replace(settings_for(tmp_path), discovery_mode="reviews")
+    meter = UsageMeter()
+    llms = {t: object() for t in ("criteria_writing", "attribute_extraction", "screening",
+                                  "outcome_grouping", "tie_break")}
+    sources = SimpleNamespace(pubmed=SimpleNamespace(count=lambda q, **kw: 15),
+                              clinicaltrials=None, europepmc=None)
+    report = run_mod.run_request(
+        from_proforma(FORM, order_id="order-1"), settings=settings, sources=sources,
+        mirror=fresh_mirror(tmp_path), llms=llms, meter=meter, store=object())
+    return report, seen
+
+
+def test_reviews_mode_takes_the_best_scored_question_that_passes_the_final_check(
+        tmp_path, monkeypatch, stubbed):
+    a, b = assessment("First", "pass"), assessment("Second", "pass")
+    screen = ScreenResult([a, b], [a, b], a, batches=1, outcome=FOUND)
+    report, seen = _reviews_mode(tmp_path, monkeypatch, screen, {"First": False, "Second": True})
+    assert report.outcome == FOUND
+    assert report.title in ("First", "Second") and report.title == seen[-1]
+    assert len(report.final_checks) == len(seen) and report.final_checks[-1].passed
+    assert report.metrics["discovery_mode"] == "reviews"
+
+
+def test_reviews_mode_needs_contact_when_every_final_check_fails(tmp_path, monkeypatch, stubbed):
+    a = assessment("Only", "pass")
+    screen = ScreenResult([a], [a], a, batches=1, outcome=FOUND)
+    report, _ = _reviews_mode(tmp_path, monkeypatch, screen, {"Only": False})
+    assert report.outcome == "needs_contact"
+    assert "narrow it" in report.screen.contact_reason
+    assert report.metrics["final_checks_failed"] == 1

@@ -101,6 +101,14 @@ def start_run(conn, order_id: Optional[str], pipeline_version: str) -> str:
     return run_id
 
 
+def discard_run(conn, run_id: str) -> None:
+    """Remove a run that paused for full texts, so the order is picked up again."""
+    conn.rollback()
+    with conn.cursor() as cur:
+        cur.execute("delete from guide_runs where id = %s and status = 'running'", (run_id,))
+    conn.commit()
+
+
 def fail_run(conn, run_id: str, error: str) -> None:
     conn.rollback()
     with conn.cursor() as cur:

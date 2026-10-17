@@ -33,6 +33,7 @@ from .candidates import (
 )
 from .gates import SYSTEMATIC, records_cap
 from .deliver import build_outputs
+from .discovery import Discovery, FinalCheck, FullTextStore, discover, final_check
 from .guide_content import assemble
 from .guide_model import build_model
 from .landscape import Landscape, assess_landscape
@@ -87,6 +88,8 @@ class RunReport:
     screening: Optional[ScreeningResult] = None
     guide_path: str = ""
     pack_path: str = ""  # zip of the PDF and companion files
+    discovery: Optional[Discovery] = None  # review led discovery (guide v2)
+    final_checks: list[FinalCheck] = field(default_factory=list)
     seconds: dict[str, float] = field(default_factory=dict)
     metrics: dict[str, Any] = field(default_factory=dict)
     selection: Optional[Selection] = None
@@ -99,6 +102,26 @@ def _gate_counts(screen: ScreenResult) -> dict[str, dict[str, int]]:
         for g in a.verdict.gates:
             counts.setdefault(g.name, Counter())[g.outcome] += 1
     return {name: dict(c) for name, c in counts.items()}
+
+
+def _discovery_metrics(report: RunReport, settings: Settings) -> dict[str, Any]:
+    d = report.discovery
+    if d is None:
+        return {"discovery_mode": "axes"}
+    readings = [r for t in d.trials for r in t.readings] + [
+        r for c in report.final_checks for r in c.readings]
+    return {
+        "discovery_mode": "reviews",
+        "topics_considered": len(d.topics),
+        "topics_tried": len(d.trials),
+        "topic_routes": [t.route for t in d.trials],
+        "reviews_read": len(readings),
+        "reviews_supplied": sum(r.basis.startswith("full text (supplied") for r in readings),
+        "reviews_open_access": sum("open access" in r.basis for r in readings),
+        "reviews_abstract_only": sum(r.basis == "abstract only" for r in readings),
+        "final_checks": len(report.final_checks),
+        "final_checks_failed": sum(not c.passed for c in report.final_checks),
+    }
 
 
 def build_metrics(report: RunReport, meter: UsageMeter, settings: Settings) -> dict[str, Any]:
@@ -131,6 +154,7 @@ def build_metrics(report: RunReport, meter: UsageMeter, settings: Settings) -> d
         "gate_outcomes": _gate_counts(s),
         "axes_tried": sorted({a.candidate.axis for a in s.assessments}),
         "chosen_axis": top.candidate.axis if top else None,
+        **_discovery_metrics(report, settings),
         "chosen_eligible_studies": top.counts.eligible_studies if top else None,
         "chosen_records_to_screen": top.counts.records_to_screen if top else None,
         "chosen_prospero_top_score": (
@@ -159,7 +183,10 @@ def build_metrics(report: RunReport, meter: UsageMeter, settings: Settings) -> d
         # cost and time
         "cost_usd": round(meter.cost_usd, 4),
         "cost_by_task_usd": {k: round(v, 4) for k, v in sorted(meter.by_task.items())},
-        "cost_candidates_usd": round(meter.by_task.get("candidate_generation", 0.0), 4),
+        # finding the question: axis generation plus review led discovery
+        "cost_candidates_usd": round(sum(meter.by_task.get(t, 0.0) for t in (
+            "candidate_generation", "topic_generation", "review_reading", "gap_candidates",
+            "axis_lens", "final_check")), 4),
         "cost_screening_usd": round(cost_screening, 4),
         "cost_per_screened_paper_usd": round(cost_screening / n_screened, 5) if n_screened else None,
         "model_calls": meter.calls,
@@ -183,7 +210,15 @@ def run_request(
     progress: Optional[Progress] = None,
     avoid_titles: tuple[str, ...] = (),
     screenshots: bool = True,
+    store: Optional[FullTextStore] = None,
 ) -> RunReport:
+    """One request end to end.
+
+    With `settings.discovery_mode == "reviews"` and a `store`, candidates come
+    from the gaps in the closest existing reviews and the chosen question gets a
+    final check against the reviews nearest to it. Either may raise
+    `discovery.AwaitingFullTexts`; run the request again once the files are in.
+    """
     say = progress or (lambda _m: None)
     th = settings.thresholds
     prefs = request.preferences
@@ -202,21 +237,33 @@ def run_request(
         sources.pubmed, request.search_topic, years=settings.landscape_years,
         openalex=getattr(sources, "openalex", None)))
 
-    say("Generating and gating candidate questions...")
-    screen = timed("candidates", lambda: screen_candidates(
-        llms["candidate_generation"], sources.pubmed, sources.clinicaltrials, mirror,
-        request.generation_topic, th, landscape=landscape,
-        mirror_max_age_days=settings.prospero_max_age_days, preferences=prefs,
-        avoid_titles=tuple(avoid_titles),
-    ))
+    discovery: Optional[Discovery] = None
+    if settings.discovery_mode == "reviews" and store is not None:
+        say("Finding topics and the closest existing reviews...")
+        discovery = timed("candidates", lambda: discover(
+            llms=llms, pubmed=sources.pubmed, clinicaltrials=sources.clinicaltrials,
+            mirror=mirror, store=store, stated_topic=request.topic, prefs=prefs, th=th,
+            landscape=landscape, mirror_max_age_days=settings.prospero_max_age_days,
+            avoid_titles=tuple(avoid_titles), say=say))
+        screen = discovery.screen
+    else:
+        say("Generating and gating candidate questions...")
+        screen = timed("candidates", lambda: screen_candidates(
+            llms["candidate_generation"], sources.pubmed, sources.clinicaltrials, mirror,
+            request.generation_topic, th, landscape=landscape,
+            mirror_max_age_days=settings.prospero_max_age_days, preferences=prefs,
+            avoid_titles=tuple(avoid_titles),
+        ))
     label = request.order_id or "request"
     report = RunReport(request, screen.outcome, None, screen, landscape=landscape,
-                       seconds=seconds)
+                       seconds=seconds, discovery=discovery)
 
     if screen.outcome == NEEDS_CONTACT or screen.top is None:
         say(f"Nothing fits the stated requirements: {screen.contact_reason}")
         report.workspace = create_workspace(f"{label} needs contact", base=settings.output_dir)
-        _finish(report, meter, settings, extra={"contact_reason": screen.contact_reason})
+        _finish(report, meter, settings, extra={
+            "contact_reason": screen.contact_reason,
+            "discovery": discovery.as_dict() if discovery else None})
         return report
 
     report.publication_type = (
@@ -239,6 +286,31 @@ def run_request(
     initial = rank([score_candidate(a, recent_share=shares[a.candidate.title], **score_kw)
                     for a in pool])
     tied = tied_leaders(initial, margin=th.score_margin, max_tied=th.max_tied)
+    if discovery is not None:
+        # Final check, best score first: read the reviews closest to the title and
+        # ask whether it is new, publishable and realistic. The first to pass goes on.
+        chosen = None
+        for s in initial:
+            say(f"Final check: {s.assessment.candidate.title}")
+            check = timed("final_check", lambda: final_check(
+                llms=llms, pubmed=sources.pubmed, store=store, assessment=s.assessment,
+                prefs=prefs, th=th, say=say))
+            report.final_checks.append(check)
+            if check.passed:
+                chosen = s
+                break
+        if chosen is None:
+            reason = "every surviving question failed the final check: " + "; ".join(
+                f"{c.title}: {c.suggested_change or 'see reasons'}" for c in report.final_checks)
+            say(reason)
+            report.outcome = NEEDS_CONTACT
+            report.screen = replace(screen, outcome=NEEDS_CONTACT, contact_reason=reason)
+            report.workspace = create_workspace(f"{label} needs contact", base=settings.output_dir)
+            _finish(report, meter, settings, extra={
+                "contact_reason": reason, "discovery": discovery.as_dict(),
+                "final_checks": [c.as_dict() for c in report.final_checks]})
+            return report
+        tied = [chosen]
     selection = Selection(initial=initial, tied=tied)
     if len(tied) > 1:
         say(f"{len(tied)} candidates within {th.score_margin} of each other: "
@@ -330,6 +402,8 @@ def run_request(
         "prospero_check": top.prospero.as_dict(),
         "searches_run": [s.__dict__ for s in top.searches],
         "selection": selection.as_dict(),
+        "discovery": discovery.as_dict() if discovery else None,
+        "final_checks": [c.as_dict() for c in report.final_checks],
         "guide": {
             "rationale": content.rationale,
             "warnings_for_reviewer": content.warnings,

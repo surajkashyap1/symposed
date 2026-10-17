@@ -89,3 +89,63 @@ def extract_screening_text(xml: str, *, max_chars: int = 60_000) -> FullText | N
         sections=tuple((s.findtext("title") or "").strip() for s in chosen),
         truncated=truncated,
     )
+
+
+# -- whole reviews (discovery) ----------------------------------------------------
+# A review's gaps and limitations live in its discussion, so for reading a review
+# everything is kept except the administrative sections.
+def extract_review_text(xml: str, *, max_chars: int = 120_000) -> FullText | None:
+    """Title + abstract + every body section except references and admin."""
+    try:
+        root = ET.fromstring(xml)
+    except ET.ParseError:
+        return None
+    article = root if root.tag == "article" else root.find(".//article")
+    body = article.find("body") if article is not None else None
+    if body is None:
+        return None
+    front = article.find("front")
+    title_node = front.find(".//article-title") if front is not None else None
+    abstract_node = front.find(".//abstract") if front is not None else None
+    sections = [
+        s for s in body.findall("sec")
+        if s.get("sec-type") not in _DROP_TYPES and not _DROP.search(s.findtext("title") or "")
+    ]
+    if not sections:
+        return None
+    parts = [f"TITLE: {_text(title_node) if title_node is not None else ''}",
+             f"ABSTRACT: {_text(abstract_node) if abstract_node is not None else ''}"]
+    parts += [f"SECTION: {(s.findtext('title') or '').strip()}\n{_text(s)}" for s in sections]
+    text = "\n\n".join(parts)
+    truncated = len(text) > max_chars
+    return FullText(text=text[:max_chars],
+                    sections=tuple((s.findtext("title") or "").strip() for s in sections),
+                    truncated=truncated)
+
+
+LOCAL_SUFFIXES = (".docx", ".pdf", ".txt", ".md")
+
+
+def read_local_text(path) -> str:
+    """Text of a full text file supplied by hand: Word, PDF, plain text or Markdown.
+
+    Most will be text copied from the publisher's page into a Word document.
+    """
+    from pathlib import Path
+
+    p = Path(path)
+    suffix = p.suffix.lower()
+    if suffix == ".docx":
+        from docx import Document
+
+        doc = Document(str(p))
+        paras = [x.text for x in doc.paragraphs]
+        cells = [c.text for t in doc.tables for r in t.rows for c in r.cells]
+        return "\n".join(x for x in paras + cells if x.strip())
+    if suffix == ".pdf":
+        from pypdf import PdfReader
+
+        return "\n".join((page.extract_text() or "") for page in PdfReader(str(p)).pages)
+    if suffix in (".txt", ".md"):
+        return p.read_text(encoding="utf-8", errors="replace")
+    raise ValueError(f"Unsupported full text file: {p.name}")

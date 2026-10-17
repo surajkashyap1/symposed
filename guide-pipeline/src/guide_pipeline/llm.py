@@ -60,11 +60,26 @@ class TaskConfig:
     thinking: bool
 
 
-# (effort, thinking) per pipeline task — the spec update's table, applied to
-# Sonnet 5. "None" effort in the table means thinking off at low effort.
+# (effort, thinking) per pipeline task — the spec update's table. "None" effort
+# in the table means thinking off at low effort.
+#
+# Two models (Suraj, 2026-10-17): the reader (ANTHROPIC_MODEL, Claude Sonnet 5.5)
+# does reading, extraction and drafting; the decider (ANTHROPIC_DECISION_MODEL,
+# Claude Opus 5.5) makes the calls that choose what the user works on. Any task
+# can still be moved with MODEL_<TASK>.
+DECISION_TASKS = frozenset({
+    "candidate_generation", "topic_generation", "gap_candidates", "axis_lens",
+    "final_check", "tie_break",
+})
 TASKS: dict[str, tuple[str, bool]] = {
     "concept_mapping": ("low", False),
     "candidate_generation": ("high", True),
+    # Review led discovery (guide v2, step 3)
+    "topic_generation": ("high", True),     # narrow topics within a specialty
+    "review_reading": ("medium", True),     # one neighbouring review: gaps and limits
+    "gap_candidates": ("high", True),       # candidate questions from the gaps
+    "axis_lens": ("high", True),            # rework a non novel question through an axis
+    "final_check": ("high", True),          # novel, publishable, realistic?
     "search_strategy": ("medium", True),
     "attribute_extraction": ("low", False),
     # Measured 2026-09-26: high was steadier than medium (7/8 vs 5/8 identical
@@ -89,7 +104,9 @@ def task_config(settings: Settings, task: str) -> TaskConfig:
         raise LLMError(f"Unknown LLM task: {task!r}")
     effort, thinking = TASKS[task]
     key = task.upper()
-    model = os.environ.get(f"MODEL_{key}") or settings.anthropic_model
+    default = (settings.anthropic_decision_model if task in DECISION_TASKS
+               else settings.anthropic_model)
+    model = os.environ.get(f"MODEL_{key}") or default
     effort = os.environ.get(f"EFFORT_{key}") or effort
     if effort not in _EFFORTS:
         raise LLMError(f"EFFORT_{key} must be one of {', '.join(_EFFORTS)}")
@@ -104,7 +121,9 @@ def task_config(settings: Settings, task: str) -> TaskConfig:
 # (5-minute TTL) bill at 1.25x input, cache reads at 0.1x input.
 PRICES: dict[str, tuple[float, float]] = {
     "claude-haiku-4-5": (1.0, 5.0),
+    "claude-haiku-5-5": (0.10, 0.50),
     "claude-sonnet-5": (2.0, 10.0),
+    "claude-sonnet-5-5": (2.0, 10.0),
     "claude-opus-5-5": (4.0, 20.0),
     "claude-opus-5": (5.0, 25.0),
     "claude-fable-5-1": (10.0, 50.0),
@@ -310,15 +329,19 @@ class GroqClient:
         return data
 
 
+_FALLBACK_MODELS = ("claude-opus-5-5", "claude-sonnet-5-5", "claude-opus-5", "claude-fable")
+
+
 @dataclass
 class AnthropicClient:
     """Claude via the official SDK, configured for one pipeline task."""
 
     api_key: str
-    model: str = "claude-sonnet-5"
+    model: str = "claude-sonnet-5-5"
     effort: str = "medium"
     thinking: bool = True
     task: str = "default"
+    fallbacks: bool = True
     max_tokens: int = 16000
     client: Any = None  # anthropic.Anthropic, injectable for tests
     meter: Optional[UsageMeter] = None
@@ -342,6 +365,24 @@ class AnthropicClient:
     def _sdk(self) -> Any:
         return self.client
 
+    def _thinking(self) -> dict[str, Any]:
+        """Thinking config this model accepts (each generation differs).
+
+        Opus 5.5 and Fable cannot switch thinking off (effort is the only lever);
+        Sonnet 5.5 switches it off with "between_tools" at effort high or below;
+        older models accept "disabled".
+        """
+        if self.thinking:
+            return {"type": "adaptive"}
+        m = self.model
+        if m.startswith(("claude-opus-5-5", "claude-fable", "claude-mythos")):
+            return {"type": "adaptive"}
+        if m.startswith("claude-sonnet-5-5"):
+            if self.effort in ("low", "medium", "high"):
+                return {"type": "between_tools"}
+            return {"type": "adaptive"}
+        return {"type": "disabled"}
+
     def _params(self, call: JsonCall) -> dict[str, Any]:
         """Request parameters, identical for synchronous and batch requests."""
         output_config: dict[str, Any] = {"effort": self.effort}
@@ -356,7 +397,7 @@ class AnthropicClient:
             "max_tokens": self.max_tokens,
             "system": system,
             "messages": [{"role": "user", "content": call.user}],
-            "thinking": {"type": "adaptive"} if self.thinking else {"type": "disabled"},
+            "thinking": self._thinking(),
             "output_config": output_config,
         }
 
@@ -382,6 +423,12 @@ class AnthropicClient:
         import anthropic
 
         params = self._params(JsonCall(system, user, schema, cache_system))
+        if self.fallbacks and self.model.startswith(_FALLBACK_MODELS):
+            # Server side refusal fallback (synchronous calls only: the Batch API
+            # rejects it). A declined request is re-run on Anthropic's
+            # recommended fallback model for that refusal category.
+            params["extra_headers"] = {"anthropic-beta": "server-side-fallback-2026-07-01"}
+            params["extra_body"] = {"fallbacks": "default"}
         try:
             response = self._sdk().messages.create(**params)
         except anthropic.APIConnectionError as exc:
@@ -499,6 +546,7 @@ def build_llm(
             effort=cfg.effort,
             thinking=cfg.thinking,
             task=task,
+            fallbacks=settings.llm_fallbacks,
             meter=meter,
             batch=settings.llm_batch if batch is None else batch,
             concurrency=settings.llm_concurrency,

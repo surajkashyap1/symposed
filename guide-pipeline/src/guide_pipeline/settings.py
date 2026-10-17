@@ -62,6 +62,13 @@ class Thresholds:
     max_preprints: int = 50                     # Europe PMC preprints added to retrieval
     prospero_reject_similarity: float = 0.75    # a registered title this similar rejects
     prospero_review_similarity: float = 0.45    # ...this similar is surfaced for human review
+    # Review led discovery (guide v2, step 3)
+    review_years: int = 10                      # neighbouring reviews: the last N years
+    max_fulltexts: int = 6                      # reviews read per topic (each is a download)
+    final_check_reviews: int = 3                # reviews read for the final novelty check
+    topic_max_reviews: int = 60                 # a stated topic with more is too broad
+    topic_min_primary: int = 30                 # primary studies a topic needs (last N years)
+    max_topics: int = 8                         # topics proposed for a vague request
 
     @classmethod
     def from_env(cls) -> "Thresholds":
@@ -85,6 +92,12 @@ class Thresholds:
             max_preprints=_get_int("MAX_PREPRINTS", 50),
             prospero_reject_similarity=_get_float("PROSPERO_REJECT_SIMILARITY", 0.75),
             prospero_review_similarity=_get_float("PROSPERO_REVIEW_SIMILARITY", 0.45),
+            review_years=_get_int("REVIEW_YEARS", 10),
+            max_fulltexts=_get_int("MAX_FULLTEXTS", 6),
+            final_check_reviews=_get_int("FINAL_CHECK_REVIEWS", 3),
+            topic_max_reviews=_get_int("TOPIC_MAX_REVIEWS", 60),
+            topic_min_primary=_get_int("TOPIC_MIN_PRIMARY", 30),
+            max_topics=_get_int("MAX_TOPICS", 8),
         )
 
 
@@ -97,12 +110,14 @@ class Settings:
     # Contact for OpenAlex / Crossref "polite pools". Deliberately separate from
     # NCBI_EMAIL, which is a personal address given for NCBI only.
     contact_email: Optional[str] = None
-    # llm — Claude Sonnet 5 for every task (effort per task); Groq selectable
+    # llm — two Claude models (see llm.DECISION_TASKS); Groq selectable
     llm_provider: str = "anthropic"
     groq_api_key: Optional[str] = None
     groq_model: str = "openai/gpt-oss-120b"
     anthropic_api_key: Optional[str] = None
-    anthropic_model: str = "claude-sonnet-5"
+    anthropic_model: str = "claude-sonnet-5-5"          # the reader
+    anthropic_decision_model: str = "claude-opus-5-5"   # the decider
+    llm_fallbacks: bool = True  # server side refusal fallback on synchronous calls
     llm_temperature: float = 0.4
     # step 2 landscape: how many recent years of the publication trend to fetch
     landscape_years: int = 10
@@ -111,6 +126,9 @@ class Settings:
     llm_batch: bool = True              # per-paper steps via the Batch API (half price)
     batch_poll_seconds: float = 30.0    # how often to check a running batch
     fulltext_max_chars: int = 60_000    # cap on open-access full text per paper
+    # how candidate questions are found: "reviews" (read neighbouring reviews and
+    # mine their gaps, guide v2) or "axes" (the 14 gap axes, the v1 method)
+    discovery_mode: str = "reviews"
     # website database the pipeline reads orders from and writes runs to
     database_url: Optional[str] = None
     # PROSPERO mirror (spec section 3)
@@ -132,13 +150,18 @@ class Settings:
             groq_api_key=_get("GROQ_API_KEY"),
             groq_model=_get("GROQ_MODEL", "openai/gpt-oss-120b") or "openai/gpt-oss-120b",
             anthropic_api_key=_get("ANTHROPIC_API_KEY"),
-            anthropic_model=_get("ANTHROPIC_MODEL", "claude-sonnet-5") or "claude-sonnet-5",
+            anthropic_model=_get("ANTHROPIC_MODEL", "claude-sonnet-5-5") or "claude-sonnet-5-5",
+            anthropic_decision_model=(_get("ANTHROPIC_DECISION_MODEL", "claude-opus-5-5")
+                                      or "claude-opus-5-5"),
+            llm_fallbacks=(_get("LLM_FALLBACKS", "true") or "true").lower()
+            in ("1", "true", "yes", "on"),
             llm_temperature=float(_get("LLM_TEMPERATURE", "0.4") or "0.4"),
             landscape_years=_get_int("LANDSCAPE_YEARS", 10),
             llm_concurrency=_get_int("LLM_CONCURRENCY", 4),
             llm_batch=(_get("LLM_BATCH", "true") or "true").lower() in ("1", "true", "yes", "on"),
             batch_poll_seconds=_get_float("BATCH_POLL_SECONDS", 30.0),
             fulltext_max_chars=_get_int("FULLTEXT_MAX_CHARS", 60_000),
+            discovery_mode=(_get("DISCOVERY_MODE", "reviews") or "reviews").lower(),
             database_url=_get("PIPELINE_DATABASE_URL") or _get("STAGING_DATABASE_URL"),
             prospero_db=Path(_get("PROSPERO_DB", "data/prospero.sqlite") or "data/prospero.sqlite"),
             prospero_max_age_days=_get_int("PROSPERO_MAX_AGE_DAYS", 10),

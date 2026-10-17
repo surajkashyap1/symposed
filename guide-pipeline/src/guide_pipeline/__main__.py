@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 from datetime import datetime, timezone
+from pathlib import Path as _Path
 
 from .candidates import TOPIC_ANY, TOPIC_EXACT, TOPIC_SPECIALTY, RequestPreferences, screen_candidates
 from .gates import LIGHTER_TYPES, SYSTEMATIC
@@ -341,12 +342,36 @@ def prospero_cmd(args: list[str]) -> int:
 
 
 HISTORY = "recall_fixtures/history.jsonl"
+
+
+def _discovery_setup(settings, sources, llms, key: str, *, abstracts_ok: bool = False):
+    """The per-request folder that survives pauses: supplied full texts and the
+    cached model replies that make a resumed run free up to where it stopped."""
+    from .discovery import FullTextStore
+    from .llm_cache import cached
+    from .workspace import slugify
+
+    folder = _Path(settings.output_dir) / "discovery" / slugify(key, max_len=60)
+    store = FullTextStore(folder / "fulltexts", getattr(sources, "europepmc", None),
+                          abstracts_ok=abstracts_ok)
+    return folder, store, cached(llms, folder / "llm_cache")
+
+
+def _print_pause(exc) -> None:
+    print(f"\n  PAUSED: {len(exc.missing)} full text(s) needed for {exc.stage}.")
+    for r in exc.missing:
+        print(f"    {r.pmid}  {r.title[:90]}")
+    print(f"  Save them in {exc.folder} (see {exc.request_path}),")
+    print("  then run the same command again. Nothing already done is paid for twice.")
 RUN_TASKS = ("candidate_generation", "criteria_writing", "attribute_extraction",
              "screening", "outcome_grouping", "tie_break", "search_strategy",
-             "protocol_drafting", "prospero_form", "plain_language")
+             "protocol_drafting", "prospero_form", "plain_language",
+             # review led discovery
+             "topic_generation", "review_reading", "gap_candidates", "axis_lens",
+             "final_check")
 
 
-def run_cmd(path: str, limit: int | None = None) -> int:
+def run_cmd(path: str, limit: int | None = None, abstracts_ok: bool = False) -> int:
     """One request end to end: a proforma JSON file in, a draft guide + metrics out.
 
     The file holds the website's proforma answers, either bare or as
@@ -372,11 +397,23 @@ def run_cmd(path: str, limit: int | None = None) -> int:
           f"(flexibility: {prefs.topic_flexibility}), team of {prefs.collaborators}")
     batch = settings.llm_batch and not _SYNC and settings.llm_provider == "anthropic"
     print(f"  per-paper steps: {'Batch API (half price)' if batch else 'parallel calls'}\n")
+    from .discovery import AwaitingFullTexts
+
+    store = None
+    if settings.discovery_mode == "reviews":
+        folder, store, llms = _discovery_setup(
+            settings, sources, llms, request.order_id or _Path(path).stem,
+            abstracts_ok=abstracts_ok)
+        print(f"  review led discovery, files in {folder}\n")
     mirror = ProsperoMirror(settings.prospero_db)
     try:
         report = run_request(request, settings=settings, sources=sources, mirror=mirror,
-                             llms=llms, meter=meter, limit=limit,
+                             llms=llms, meter=meter, limit=limit, store=store,
                              progress=lambda m: print(f"  {m}", flush=True))
+    except AwaitingFullTexts as exc:
+        _print_pause(exc)
+        _print_cost(meter)
+        return 3
     except StaleMirrorError as exc:
         print(f"  REFUSING TO RUN: {exc}")
         return 1
@@ -422,6 +459,7 @@ def batch_cmd(limit: int | None = None, max_orders: int | None = None) -> int:
         orders = db.orders_to_process(conn)[:max_orders] if max_orders else db.orders_to_process(conn)
         print(f"\n{len(orders)} order(s) to process")
         failures = 0
+        paused: list = []
         for order in orders:
             meter = UsageMeter()
             llms = {t: _llm(settings, t, meter) for t in RUN_TASKS}
@@ -431,12 +469,25 @@ def batch_cmd(limit: int | None = None, max_orders: int | None = None) -> int:
             avoid = db.titles_to_avoid(conn, order.id)
             run_id = db.start_run(conn, order.id, _git_version())
             print(f"\n== Order {order.id} (run {run_id}); avoiding {len(avoid)} title(s)")
+            from .discovery import AwaitingFullTexts
+
+            store = None
+            if settings.discovery_mode == "reviews":
+                _, store, llms = _discovery_setup(settings, sources, llms, order.id)
             mirror = ProsperoMirror(settings.prospero_db)
             try:
-                report = run_request(request, settings=settings, sources=sources,
-                                     mirror=mirror, llms=llms, meter=meter, limit=limit,
-                                     avoid_titles=tuple(avoid),
-                                     progress=lambda m: print(f"  {m}", flush=True))
+                try:
+                    report = run_request(request, settings=settings, sources=sources,
+                                         mirror=mirror, llms=llms, meter=meter, limit=limit,
+                                         avoid_titles=tuple(avoid), store=store,
+                                         progress=lambda m: print(f"  {m}", flush=True))
+                except AwaitingFullTexts as exc:
+                    # No run row for a paused order: the next batch picks it up
+                    # again and the cached replay resumes it.
+                    db.discard_run(conn, run_id)
+                    paused.append((order.id, exc))
+                    _print_pause(exc)
+                    continue
                 pack = None
                 if report.pack_path:
                     from pathlib import Path as _Path
@@ -452,8 +503,11 @@ def batch_cmd(limit: int | None = None, max_orders: int | None = None) -> int:
                 print(f"  -> FAILED: {type(exc).__name__}: {exc}")
             finally:
                 mirror.close()
-        print(f"\nBatch done: {len(orders) - failures} run(s) saved, {failures} failed. "
+        print(f"\nBatch done: {len(orders) - failures - len(paused)} run(s) saved, "
+              f"{failures} failed, {len(paused)} waiting for full texts. "
               "Review them in /admin/guides.")
+        for order_id, exc in paused:
+            print(f"  waiting: order {order_id}: {len(exc.missing)} file(s), see {exc.request_path}")
         return 0 if not failures else 1
     finally:
         conn.close()
@@ -578,10 +632,15 @@ def main(argv: list[str] | None = None) -> int:
             i = rest.index("--limit")
             limit = int(rest[i + 1])
             rest = rest[:i] + rest[i + 2:]
+        abstracts_ok = "--abstracts-ok" in rest
+        rest = [a for a in rest if a != "--abstracts-ok"]
         if not rest:
-            print("Usage: python -m guide_pipeline run <request.json> [--limit N] [--sync]")
+            print("Usage: python -m guide_pipeline run <request.json> [--limit N] [--sync] "
+                  "[--abstracts-ok]\n  Review led discovery pauses when it needs full texts; "
+                  "run again to resume.\n  --abstracts-ok: use abstracts for any review "
+                  "still missing instead of pausing.")
             return 2
-        return run_cmd(rest[0], limit=limit)
+        return run_cmd(rest[0], limit=limit, abstracts_ok=abstracts_ok)
     if argv and argv[0] == "batch":
         rest = argv[1:]
         opts = {}

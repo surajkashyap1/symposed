@@ -115,6 +115,32 @@ v1 above was the cut-down slice. We are now aligning it with the full
   Papers show no rating: only likely eligible or unclear papers are listed, with
   PubMed's own publication type or our marked estimate. Re-render after a design
   change with `python -m guide_pipeline render <run folder> [--shots]`.
+- **Guide v2, step 3: review led discovery** ✅ (`discovery.py`, `llm_cache.py`):
+  topics one or two levels inside the specialty, each counted in PubMed (reviews
+  and primary studies, last 10 years), fewest reviews first; the closest reviews
+  on the topic are read in full (Europe PMC open access fetched automatically,
+  the rest supplied by hand); the decider turns their gaps into questions, which
+  go through the usual gates, with the 14 axes as a lens only when a gap
+  question is not new enough; the next topic only if no real gap. After scoring,
+  a final check reads the 2 or 3 reviews closest to the title and asks: new,
+  publishable as a review, realistic? Reader Sonnet 5.5, decider Opus 5.5.
+  `DISCOVERY_MODE=axes` restores the v1 method.
+
+## Supplying full texts
+
+A review led run stops when it needs reviews that are not open access:
+
+```bash
+python -m guide_pipeline run output/requests/<order>.json
+#  PAUSED: 2 full text(s) needed ... see output/discovery/<order>/fulltexts/NEEDED.md
+```
+
+Save each listed review in that folder as `<PMID>.docx` (pasted text is fine),
+`.pdf`, `.txt` or `.md`, or an empty `<PMID>.skip` if you cannot get it (its
+abstract is used). Run the same command again: everything before the pause is
+replayed from cache at no cost. `--abstracts-ok` uses abstracts for anything
+still missing instead of pausing. The Friday `batch` does the same per order:
+a paused order gets no run row and is picked up again next time.
 
 Model (decided 2026-09-25): **Claude Sonnet 5 for every task**, reasoning effort
 set per task. Groq proved too weak (narrow searches, flaky JSON) and stays only as

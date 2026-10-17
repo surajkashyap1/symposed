@@ -194,14 +194,18 @@ class PubMedClient:
         data = self.http.get_json(ESEARCH_URL, params, validate=_has_count)
         return int(data["esearchresult"]["count"])
 
-    def search_pmids(self, query: str, *, retmax: int = 400) -> list[str]:
-        """PMIDs matching `query`, most recent first, up to `retmax`."""
+    def search_pmids(self, query: str, *, retmax: int = 400, sort: str = "most+recent",
+                     min_year: Optional[int] = None) -> list[str]:
+        """PMIDs matching `query`, most recent first (or `sort="relevance"`, PubMed's
+        Best match), up to `retmax`, optionally from `min_year` on."""
         params = {
             **self._base_params(),
             "term": query,
             "retmax": str(retmax),
-            "sort": "most+recent",
+            "sort": sort,
         }
+        if min_year is not None:  # both ends, or E-utilities ignores the range
+            params.update(datetype="pdat", mindate=str(min_year), maxdate="3000")
         data = self.http.get_json(ESEARCH_URL, params, validate=_has_count)
         return list(data["esearchresult"].get("idlist", []))
 

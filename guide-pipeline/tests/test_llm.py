@@ -151,8 +151,24 @@ def test_anthropic_thinking_off_and_no_schema():
     client = AnthropicClient(api_key="k", effort="low", thinking=False, client=fake)
     assert client.complete_json("s", "u") == {"a": 2}  # fenced JSON tolerated
     call = fake.calls[0]
-    assert call["thinking"] == {"type": "disabled"}
+    assert call["thinking"] == {"type": "between_tools"}  # Sonnet 5.5's "off"
     assert call["output_config"] == {"effort": "low"}
+
+
+def test_thinking_off_is_spelled_per_model_and_fallbacks_only_where_supported():
+    def thinking(model, effort="low"):
+        return AnthropicClient(api_key="k", model=model, effort=effort, thinking=False,
+                               client=FakeAnthropic())._thinking()
+    assert thinking("claude-opus-5-5") == {"type": "adaptive"}  # cannot be switched off
+    assert thinking("claude-sonnet-5-5", "xhigh") == {"type": "adaptive"}
+    assert thinking("claude-sonnet-5") == {"type": "disabled"}
+    fake = FakeAnthropic(reply('{"a": 1}'))
+    AnthropicClient(api_key="k", model="claude-opus-5-5", client=fake).complete_json("s", "u")
+    assert fake.calls[0]["extra_body"] == {"fallbacks": "default"}
+    assert "server-side-fallback-2026-07-01" in fake.calls[0]["extra_headers"]["anthropic-beta"]
+    fake = FakeAnthropic(reply('{"a": 1}'))
+    AnthropicClient(api_key="k", model="claude-haiku-4-5", client=fake).complete_json("s", "u")
+    assert "extra_body" not in fake.calls[0]
 
 
 def test_anthropic_refusal_and_truncation_raise():
@@ -181,8 +197,12 @@ def test_usage_meter_prices_every_call():
 def test_task_settings_follow_the_spec_table_and_env_overrides(monkeypatch):
     s = Settings(llm_provider="anthropic", anthropic_api_key="k")
     extraction = task_config(s, "attribute_extraction")
-    assert (extraction.model, extraction.effort, extraction.thinking) == ("claude-sonnet-5", "low", False)
+    assert (extraction.model, extraction.effort, extraction.thinking) == ("claude-sonnet-5-5", "low", False)
     assert task_config(s, "candidate_generation").effort == "high"
+    # decisions go to the decider model, reading to the reader
+    assert task_config(s, "gap_candidates").model == "claude-opus-5-5"
+    assert task_config(s, "final_check").model == "claude-opus-5-5"
+    assert task_config(s, "review_reading").model == "claude-sonnet-5-5"
     assert task_config(s, "tie_break").effort == "max"
     monkeypatch.setenv("EFFORT_CANDIDATE_GENERATION", "xhigh")
     monkeypatch.setenv("MODEL_CANDIDATE_GENERATION", "claude-fable-5-1")

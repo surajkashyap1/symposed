@@ -99,6 +99,22 @@ v1 above was the cut-down slice. We are now aligning it with the full
   citation numbers are removed), PROSPERO entry. Literature and narrative
   reviews get their own section set. Reviewer warnings go to results.json.
 - **A10 — Stage 6 verification screen + weekly batch scheduler.**
+- **Guide v2 — designed PDF + companion files** ✅ (Suraj's brief, 2026-10-17):
+  `guide_model.py` builds one JSON render model (saved as `guide_model.json`);
+  `guide_pdf.py` renders it with WeasyPrint from `assets/guide.html.j2` +
+  `assets/guide.css` (claret cover with the mark, contents with page numbers,
+  watermark on every page, a full width coloured banner per numbered step, red
+  boxes for disclaimers, nothing below 7pt); `diagrams.py` draws the timeline,
+  include or exclude decision tree, risk of bias tree and PRISMA flow as SVG;
+  `screenshots.py` captures each numbered search in PubMed (Playwright);
+  `companions.py` writes `tracker.xlsx` (screening with drop downs, extraction,
+  risk of bias, search log), `protocol.docx` and `prospero_draft.docx`;
+  `deliver.py` zips them as `guide-pack.zip` (stored in `guide_runs.guide_docx`).
+  Step names live only in `guide_model.steps()`. House style for user-facing
+  text: plain English, no semicolons, no dashes (`plain.tidy`, checked by tests).
+  Papers show no rating: only likely eligible or unclear papers are listed, with
+  PubMed's own publication type or our marked estimate. Re-render after a design
+  change with `python -m guide_pipeline render <run folder> [--shots]`.
 
 Model (decided 2026-09-25): **Claude Sonnet 5 for every task**, reasoning effort
 set per task. Groq proved too weak (narrow searches, flaky JSON) and stays only as

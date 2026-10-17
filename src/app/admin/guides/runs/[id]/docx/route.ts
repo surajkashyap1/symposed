@@ -7,7 +7,9 @@ import { isUuid } from "@/lib/utils";
 
 // Admin-only download of a pipeline run's draft guide (Stage 6 review). The
 // reviewer edits this draft and delivers the final files through the existing
-// Deliver form.
+// Deliver form. Since guide v2 the column holds a zip of the PDF guide and its
+// companion files (tracker, protocol, PROSPERO draft); older runs hold a .docx.
+// Both are zip containers, so the PDF entry name tells them apart.
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -28,11 +30,14 @@ export async function GET(
     .trim()
     .slice(0, 60)
     .replace(/\s+/g, "-");
-  return new NextResponse(new Uint8Array(run.docx), {
+  const bytes = new Uint8Array(run.docx);
+  const isPack = Buffer.from(bytes).includes("guide.pdf");
+  return new NextResponse(bytes, {
     headers: {
-      "Content-Type":
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "Content-Disposition": `attachment; filename="${name || "draft-guide"}.docx"`,
+      "Content-Type": isPack
+        ? "application/zip"
+        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "Content-Disposition": `attachment; filename="${name || "draft-guide"}.${isPack ? "zip" : "docx"}"`,
       "Cache-Control": "private, no-store",
     },
   });

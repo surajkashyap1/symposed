@@ -32,8 +32,9 @@ from .candidates import (
     screen_candidates,
 )
 from .gates import SYSTEMATIC, records_cap
-from .guide import build_guide
+from .deliver import build_outputs
 from .guide_content import assemble
+from .guide_model import build_model
 from .landscape import Landscape, assess_landscape
 from .llm import LLMClient, UsageMeter
 from .prospero import ProsperoMirror
@@ -85,6 +86,7 @@ class RunReport:
     retrieval: Optional[RetrievalResult] = None
     screening: Optional[ScreeningResult] = None
     guide_path: str = ""
+    pack_path: str = ""  # zip of the PDF and companion files
     seconds: dict[str, float] = field(default_factory=dict)
     metrics: dict[str, Any] = field(default_factory=dict)
     selection: Optional[Selection] = None
@@ -180,6 +182,7 @@ def run_request(
     limit: Optional[int] = None,
     progress: Optional[Progress] = None,
     avoid_titles: tuple[str, ...] = (),
+    screenshots: bool = True,
 ) -> RunReport:
     say = progress or (lambda _m: None)
     th = settings.thresholds
@@ -311,8 +314,13 @@ def run_request(
         proforma=request.proforma, search_date=search_date, pubmed=sources.pubmed,
         llms=llms, screened_all=len(screening.papers) >= len(retrieval.papers)))
     report.content = content
-    report.guide_path = timed("guide", lambda: build_guide(workspace, content,
-                                                           landscape=landscape))
+    model = build_model(content, proforma=request.proforma, retrieval_query=retrieval.query,
+                        retrieval_count=retrieval.identified)
+    say("Rendering the PDF guide, tracker, protocol and PROSPERO draft...")
+    outputs = timed("guide", lambda: build_outputs(workspace, model, screenshots=screenshots,
+                                                   say=say))
+    report.guide_path = str(outputs["pdf"])
+    report.pack_path = str(outputs["pack"])
     _finish(report, meter, settings, extra={
         "search_date": search_date,
         "title": report.title,

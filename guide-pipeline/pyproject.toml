@@ -13,6 +13,10 @@ dependencies = [
   "psycopg[binary]>=3.2",
   "python-dotenv>=1.0",
   "python-docx>=1.1",
+  "weasyprint>=66",
+  "openpyxl>=3.1",
+  "jinja2>=3.1",
+  "playwright>=1.50",
 ]
 
 [project.optional-dependencies]
@@ -25,5 +29,5 @@ guide-pipeline = "guide_pipeline.__main__:doctor"
 where = ["src"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "tests"]
 testpaths = ["tests"]

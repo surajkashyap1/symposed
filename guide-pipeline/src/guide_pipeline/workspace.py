@@ -1,8 +1,9 @@
 """Per-request output folder.
 
 Each guide request gets its own folder holding a JSON of everything found
-(`results.json`), the draft Word document (`guide.docx`), and a `cache/` of raw
-API responses.
+(`results.json`), the designed guide (`guide.pdf`) with its render model
+(`guide_model.json`) and editable companion files, and a `cache/` of raw API
+responses.
 """
 
 from __future__ import annotations
@@ -34,7 +35,15 @@ class Workspace:
 
     @property
     def guide_path(self) -> Path:
-        return self.dir / "guide.docx"
+        return self.dir / "guide.pdf"
+
+    @property
+    def model_path(self) -> Path:
+        return self.dir / "guide_model.json"
+
+    @property
+    def pack_path(self) -> Path:
+        return self.dir / "guide-pack.zip"
 
     @property
     def cache_dir(self) -> Path:

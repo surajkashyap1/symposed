@@ -28,6 +28,7 @@ import httpx
 from .gates import LIGHTER_TYPES, SYSTEMATIC
 from .llm import LLMClient
 from .prospero import match_key, similarity
+from .rob_tools import choose_tools
 from .screening import LIKELY_ELIGIBLE, LIKELY_INELIGIBLE, UNCLEAR, Criteria, ScreeningResult
 from .sources.pubmed import Paper, PubMedClient
 
@@ -84,23 +85,9 @@ HOURS_PER_WEEK = {"Under 3": 2.0, "3 to 5": 4.0, "5 to 10": 7.5, "Over 10": 12.0
 
 
 def risk_of_bias_tool(designs: str, axis: str = "") -> str:
-    d = f"{designs} {axis}".lower()
-    if "diagnostic" in d or "accuracy" in d:
-        return "QUADAS-2 (diagnostic accuracy studies)"
-    if "prediction model" in d or "prognostic model" in d:
-        return "PROBAST (prediction model studies)"
-    if "prognostic factor" in d:
-        return "QUIPS (prognostic factor studies)"
-    randomised = "random" in d
-    non_randomised = any(w in d for w in ("cohort", "case-control", "observational",
-                                          "non-randomised", "non-randomized", "quasi"))
-    if randomised and non_randomised:
-        return "RoB 2 for randomised trials and ROBINS-I for non-randomised studies"
-    if randomised:
-        return "RoB 2 (randomised trials)"
-    if "case-control" in d or "cohort" in d or "observational" in d:
-        return "Newcastle-Ottawa Scale (cohort and case-control studies)"
-    return "ROBINS-I (non-randomised studies of interventions)"
+    """The risk of bias tool(s) for the designs, as one line (see rob_tools)."""
+    tools = choose_tools(designs, axis)
+    return " and ".join(f"{t.name} ({t.use_for})" for t in tools)
 
 
 def reporting_guideline(publication_type: str, designs: str = "") -> list[str]:
@@ -293,10 +280,21 @@ PROSPERO_SCHEMA = {
     "type": "object", "properties": {f: _S for f in PROSPERO_FIELDS},
     "required": list(PROSPERO_FIELDS), "additionalProperties": False,
 }
+# House style for everything a user reads (Suraj, 2026-10-17): plain English for
+# a complete beginner, no semicolons, no dashes used as punctuation.
+PLAIN_STYLE = (
+    "Write for a student who has never done research before. Use plain English and "
+    "short sentences. When you must use a technical term, explain it in the same "
+    "sentence. Never use semicolons. Never use dashes as punctuation (no em dashes, "
+    "no en dashes, no spaced hyphens): use commas or full stops instead. Hyphenated "
+    "words such as meta-analysis are fine."
+)
 _DESIGNER = (
     "You are an experienced systematic reviewer writing part of a methods guide for a "
     "first-time reviewer. Be specific and practical. Never invent studies, counts, "
-    "citations or MeSH terms: cite only by the [n] numbers given. You return ONLY JSON."
+    "citations or MeSH terms: cite only by the [n] numbers given. " + PLAIN_STYLE +
+    " Search strategies are the exception: write them in exact database syntax. "
+    "You return ONLY JSON."
 )
 _MESH_TAG = re.compile(r'"?([^"()]+?)"?\s*\[(?:mh|mesh|MeSH|MeSH Terms|Mesh)(?::noexp)?\]')
 _CITE = re.compile(r"\[(\d+)\]")
@@ -334,7 +332,9 @@ def search_strategies(llm: LLMClient, pubmed: PubMedClient, *, title: str,
     data = llm.complete_json(_DESIGNER, user, schema=STRATEGY_SCHEMA)
     strategies = []
     for s in data.get("strategies", [])[:3]:
-        st = Strategy(str(s.get("name", "")), str(s.get("pubmed_query", "")),
+        name = re.sub(r"\s*\(?\brecommended\b\)?", "", str(s.get("name", "")),
+                      flags=re.I).strip()
+        st = Strategy(name, str(s.get("pubmed_query", "")),
                       str(s.get("purpose", "")))
         if st.pubmed_query:
             try:
@@ -397,6 +397,51 @@ def prospero_entry(llm: LLMClient, *, title: str, criteria: Criteria, protocol: 
         "You fill registration forms from a finished protocol. You return ONLY JSON.",
         user, schema=PROSPERO_SCHEMA)
     return {f: str(data.get(f, "")) for f in PROSPERO_FIELDS}
+
+
+PLAIN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "decision_tree": {"type": "array", "items": {
+            "type": "object", "properties": {"question": _S, "no_label": _S},
+            "required": ["question", "no_label"], "additionalProperties": False}},
+        "glossary": {"type": "array", "items": {
+            "type": "object", "properties": {"term": _S, "definition": _S},
+            "required": ["term", "definition"], "additionalProperties": False}},
+    },
+    "required": ["decision_tree", "glossary"],
+    "additionalProperties": False,
+}
+
+
+def plain_language(llm: LLMClient, *, title: str, criteria: Criteria,
+                   protocol: dict) -> dict[str, list[dict[str, str]]]:
+    """The include or exclude questions (from the protocol) and project terms.
+
+    The decision tree is drawn from these questions in order: yes moves to the
+    next question, no excludes the paper with `no_label` as the reason. Code
+    trims it to a readable size; the guide says it comes from the protocol and
+    may need editing.
+    """
+    user = (
+        f'Review question: "{title}"\n\nThe protocol\'s criteria:\n{criteria.as_text()}\n\n'
+        f"Aims: {protocol.get('aims', '')}\n\n"
+        "1. Turn the criteria into 4 to 7 yes or no questions a beginner can ask about "
+        "one paper, in the order they should be asked (study design first, then "
+        "population, then intervention or exposure, then comparator if it matters, then "
+        "outcomes, then any other rule). Each question is at most 18 words and is "
+        "answered YES when the paper meets the rule. Fold the exclusion criteria into "
+        "these questions. no_label is the short reason for exclusion, at most 8 words, "
+        "for example 'Wrong population: adults only'.\n"
+        "2. List 4 to 10 terms specific to this topic that a first-year student might not "
+        "know (conditions, treatments, tests, measures), each with a one or two sentence "
+        "plain English definition. Do not include general research terms such as PICO, "
+        "PubMed, MeSH, screening or risk of bias."
+    )
+    data = llm.complete_json(_DESIGNER, user, schema=PLAIN_SCHEMA)
+    tree = [q for q in data.get("decision_tree", []) if str(q.get("question", "")).strip()][:7]
+    glossary = [g for g in data.get("glossary", []) if str(g.get("term", "")).strip()][:12]
+    return {"decision_tree": tree, "glossary": glossary}
 
 
 # -- similar work and journals (from API records only) --------------------------------
@@ -494,6 +539,9 @@ class GuideContent:
     journals: list[tuple[str, int]]
     search_appendix: list[dict[str, Any]]
     warnings: list[str] = field(default_factory=list)  # for the human reviewer
+    axis: str = ""
+    decision_tree: list[dict[str, str]] = field(default_factory=list)
+    project_glossary: list[dict[str, str]] = field(default_factory=list)
 
     @property
     def systematic(self) -> bool:
@@ -528,6 +576,11 @@ def assemble(
 
     strategies = search_strategies(llms["search_strategy"], pubmed, title=title,
                                    criteria=criteria, base_query=retrieval.query)
+    counted = [st for st in strategies["strategies"] if st.count is not None]
+    for a, b in zip(counted, counted[1:]):
+        if a.count < b.count:
+            warnings.append(f"Strategy '{a.name}' ({a.count}) returns fewer records than the "
+                            f"narrower '{b.name}' ({b.count}): check its terms.")
     for st in strategies["strategies"]:
         if st.unverified_mesh:
             warnings.append(f"Strategy '{st.name}': MeSH term(s) not found in the MeSH "
@@ -552,6 +605,8 @@ def assemble(
         warnings.append(f"The model recommended '{bad.name}', which returned "
                         f"{bad.count} records; switched to '{best.name}'.")
     rob = risk_of_bias_tool(criteria.study_designs, c.axis)
+    plain = plain_language(llms["plain_language"], title=title, criteria=criteria,
+                           protocol=protocol)
     rec = strategies["strategies"][strategies["recommended"]] if strategies["strategies"] else None
     prospero = None
     if is_systematic(publication_type):
@@ -626,4 +681,7 @@ def assemble(
         journals=journal_shortlist(screening),
         search_appendix=appendix,
         warnings=warnings,
+        axis=c.axis,
+        decision_tree=plain["decision_tree"],
+        project_glossary=plain["glossary"],
     )

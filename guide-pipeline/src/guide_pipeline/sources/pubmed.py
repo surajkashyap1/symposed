@@ -53,6 +53,9 @@ class Paper:
     # Europe PMC id (e.g. PPR123456) goes in `pmid` with id_type "PPR".
     id_type: str = "PMID"
     source: str = "PubMed"
+    # PubMed's own publication types (e.g. "Randomized Controlled Trial",
+    # "Systematic Review"), read from the record. Empty when the source has none.
+    publication_types: tuple[str, ...] = ()
 
     @property
     def is_preprint(self) -> bool:
@@ -132,6 +135,11 @@ def _parse_article(art: ET.Element) -> Optional[Paper]:
             initials = a.findtext("./Initials") or ""
             authors.append(f"{last} {initials}".strip())
 
+    publication_types = tuple(
+        t for t in (_node_text(pt) for pt in article.findall("./PublicationTypeList/PublicationType"))
+        if t
+    )
+
     doi: Optional[str] = None
     # The article's OWN ids only — NOT ids in the reference list.
     for aid in art.findall("./PubmedData/ArticleIdList/ArticleId"):
@@ -148,6 +156,7 @@ def _parse_article(art: ET.Element) -> Optional[Paper]:
         year=year,
         doi=doi,
         epub_year=epub_year,
+        publication_types=publication_types,
     )
 
 

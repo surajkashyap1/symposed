@@ -26,5 +26,9 @@ proforma. Separate from the Symposed Next.js app in the parent repo. Build
 - PROSPERO access goes ONLY through `prospero/adapter.py` (undocumented endpoint,
   may be replaced by a CRD feed). The pipeline queries the local mirror, never
   PROSPERO per title. Checks refuse to run on a stale mirror — never bypass that.
+- Everything a user reads is plain English for a complete beginner, with no
+  semicolons and no dashes as punctuation. Model prose goes through `plain.tidy`;
+  fixed wording in `assets/guide.html.j2` is checked by `test_guide_text_follows_house_style`.
+  Step names come only from `guide_model.steps()`.
 - A human reviews every output and does a final live PROSPERO check on the title
   that ships. Never fully automate generation and delivery.

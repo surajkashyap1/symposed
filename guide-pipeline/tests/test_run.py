@@ -86,14 +86,20 @@ def stubbed(monkeypatch):
                                                        unverified_mesh=[])],
                         "recommended": 0, "embase_emtree": "", "cochrane_central": ""})
 
-    def fake_build_guide(workspace, content, **kw):
+    def fake_build_model(content, **kw):
+        calls["model_query"] = kw["retrieval_query"]
+        return {"title": "Winner"}
+
+    def fake_build_outputs(workspace, model, **kw):
         workspace.guide_path.write_text("guide")
-        return str(workspace.guide_path)
+        workspace.pack_path.write_text("pack")
+        return {"pdf": workspace.guide_path, "pack": workspace.pack_path}
 
     monkeypatch.setattr(run_mod, "retrieve", fake_retrieve)
     monkeypatch.setattr(run_mod, "screen_papers", fake_screen)
     monkeypatch.setattr(run_mod, "assemble", fake_assemble)
-    monkeypatch.setattr(run_mod, "build_guide", fake_build_guide)
+    monkeypatch.setattr(run_mod, "build_model", fake_build_model)
+    monkeypatch.setattr(run_mod, "build_outputs", fake_build_outputs)
     return calls
 
 
@@ -128,7 +134,8 @@ def found(tmp_path=None):
 def test_found_run_writes_guide_results_and_metrics(tmp_path, monkeypatch, stubbed):
     report = run(tmp_path, monkeypatch, found())
     assert report.outcome == FOUND and report.title == "Winner"
-    assert report.guide_path.endswith("guide.docx")
+    assert report.guide_path.endswith("guide.pdf")
+    assert report.pack_path.endswith("guide-pack.zip")
     assert stubbed["assembled_title"] == "Winner"
     assert report.metrics["guide_warnings"] == 1 and report.metrics["strategy_counts"] == [7]
     assert stubbed["query"].startswith("(heart failure[tiab]) NOT (review[pt]")  # SR filter

@@ -73,6 +73,8 @@ TASKS: dict[str, tuple[str, bool]] = {
     "criteria_writing": ("high", True),
     "protocol_drafting": ("medium", True),
     "prospero_form": ("low", True),
+    # Include or exclude questions for the decision tree, and topic glossary.
+    "plain_language": ("low", True),
     "guide_drafting": ("low", False),
     "tie_break": ("max", True),
     # Grouping stated primary outcomes for the heterogeneity check.

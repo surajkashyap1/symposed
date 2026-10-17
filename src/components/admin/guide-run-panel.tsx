@@ -179,7 +179,7 @@ export function GuideRunPanel({ review }: { review: RunReview | null }) {
 
           {run.hasDocx && (
             <a href={`/admin/guides/runs/${run.id}/docx`} className="text-xs text-primary underline">
-              Download the draft guide (.docx)
+              Download the draft guide files
             </a>
           )}
         </>

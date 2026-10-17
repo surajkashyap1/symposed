@@ -20,7 +20,7 @@ def test_create_workspace_makes_dirs(tmp_path):
     assert ws.cache_dir.is_dir()
     assert ws.dir.name == "20260922-083000_vitamin-d-in-sepsis"
     assert ws.results_path == ws.dir / "results.json"
-    assert ws.guide_path == ws.dir / "guide.docx"
+    assert ws.guide_path == ws.dir / "guide.pdf"
 
 
 def test_create_workspace_with_explicit_request_id(tmp_path):

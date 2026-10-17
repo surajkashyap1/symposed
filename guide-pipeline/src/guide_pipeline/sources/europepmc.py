@@ -89,6 +89,8 @@ def _record_to_paper(rec: dict) -> Paper | None:
         publisher = (rec.get("bookOrReportDetails") or {}).get("publisher", "")
         journal = f"{publisher} (preprint)" if publisher else "Preprint"
     year = rec.get("pubYear")
+    pub_types = tuple(str(t) for t in ((rec.get("pubTypeList") or {}).get("pubType") or [])
+                      if t)
     return Paper(
         pmid=ident,
         title=title,
@@ -99,6 +101,7 @@ def _record_to_paper(rec: dict) -> Paper | None:
         doi=rec.get("doi"),
         id_type="PPR" if preprint else "PMID",
         source="Europe PMC (preprint)" if preprint else "Europe PMC",
+        publication_types=("Preprint",) if preprint else pub_types,
     )
 
 

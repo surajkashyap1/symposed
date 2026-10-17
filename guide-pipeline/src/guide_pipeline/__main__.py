@@ -343,7 +343,7 @@ def prospero_cmd(args: list[str]) -> int:
 HISTORY = "recall_fixtures/history.jsonl"
 RUN_TASKS = ("candidate_generation", "criteria_writing", "attribute_extraction",
              "screening", "outcome_grouping", "tie_break", "search_strategy",
-             "protocol_drafting", "prospero_form")
+             "protocol_drafting", "prospero_form", "plain_language")
 
 
 def run_cmd(path: str, limit: int | None = None) -> int:
@@ -394,6 +394,7 @@ def run_cmd(path: str, limit: int | None = None) -> int:
         for status, n in report.screening.counts.items():
             print(f"  {status:<26} {n:>4}")
         print(f"  Guide: {report.guide_path}")
+        print(f"  Files: {report.pack_path}")
     print(f"  Results: {report.workspace.results_path}")
     print(f"  Time: {m['seconds_total']:.0f}s  "
           f"Cost: ${m['cost_usd']:.2f} (candidates ${m['cost_candidates_usd']:.2f}, "
@@ -436,11 +437,13 @@ def batch_cmd(limit: int | None = None, max_orders: int | None = None) -> int:
                                      mirror=mirror, llms=llms, meter=meter, limit=limit,
                                      avoid_titles=tuple(avoid),
                                      progress=lambda m: print(f"  {m}", flush=True))
-                docx = None
-                if report.guide_path:
+                pack = None
+                if report.pack_path:
                     from pathlib import Path as _Path
-                    docx = _Path(report.guide_path).read_bytes()
-                db.save_run(conn, run_id, report, docx=docx)
+                    pack = _Path(report.pack_path).read_bytes()
+                # The guide_docx column now holds the zip of the PDF guide and its
+                # companion files; the admin download serves it as a .zip.
+                db.save_run(conn, run_id, report, docx=pack)
                 print(f"  -> {report.outcome}: {report.title or report.screen.contact_reason}"
                       f"  (${report.metrics.get('cost_usd', 0):.2f})")
             except Exception as exc:  # one order failing must not stop the batch
@@ -607,6 +610,18 @@ def main(argv: list[str] | None = None) -> int:
         return consistency_cmd(rest[0], papers=n or 5)
     if argv and argv[0] == "prospero":
         return prospero_cmd(argv[1:])
+    if argv and argv[0] == "render":
+        rest = [a for a in argv[1:] if a != "--shots"]
+        if not rest:
+            print("Usage: python -m guide_pipeline render <run folder> [--shots]\n"
+                  "Rebuilds guide.pdf and the companion files from guide_model.json "
+                  "(no model calls). --shots retakes the PubMed screenshots.")
+            return 2
+        from .deliver import rerender
+        out = rerender(rest[0], screenshots="--shots" in argv)
+        for name, path in out.items():
+            print(f"  {name:<9} {path}")
+        return 0
     if argv and argv[0] == "guide":
         print("The guide command was replaced by: python -m guide_pipeline run <request.json>")
         return 2

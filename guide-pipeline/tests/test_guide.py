@@ -1,13 +1,12 @@
 from datetime import date, datetime, timezone
+from html import unescape
 from types import SimpleNamespace
-
-from docx import Document
 
 from guide_pipeline.candidates import Candidate, CandidateAssessment, RequestPreferences, SearchRun
 from guide_pipeline.gates import GateVerdict, TriageCounts
-from guide_pipeline.guide import _format_citation, build_guide
 from guide_pipeline.guide_content import (
     DISCLAIMERS,
+    PLAIN_SCHEMA,
     PROSPERO_SCHEMA,
     PROTOCOL_SCHEMA,
     REGISTRATION_URGENCY,
@@ -19,6 +18,8 @@ from guide_pipeline.guide_content import (
     risk_of_bias_tool,
     timeline,
 )
+from guide_pipeline.guide_model import build_model
+from guide_pipeline.guide_pdf import render_html
 from guide_pipeline.prospero import ProsperoCheck, ProsperoMatch
 from guide_pipeline.retrieval import RetrievalResult
 from guide_pipeline.screening import (
@@ -32,7 +33,6 @@ from guide_pipeline.screening import (
     ScreeningResult,
 )
 from guide_pipeline.sources.pubmed import Paper
-from guide_pipeline.workspace import create_workspace
 
 
 def _paper(pmid, title, authors=("Smith J",), year=2021, journal="J Test", doi="10.1/x"):
@@ -94,6 +94,12 @@ class GuideLLM:
                     "analysis": "Random effects meta-analysis.", "skills_needed": ["RevMan"]}
         if schema is PROSPERO_SCHEMA:
             return {k: f"draft {k}" for k in PROSPERO_SCHEMA["properties"]}
+        if schema is PLAIN_SCHEMA:
+            return {"decision_tree": [
+                {"question": "Is it a randomised controlled trial?", "no_label": "Wrong design"},
+                {"question": "Were the patients adults in intensive care?",
+                 "no_label": "Wrong population"}],
+                "glossary": [{"term": "Vitamin D", "definition": "A vitamin made in the skin."}]}
         raise AssertionError(schema)
 
 
@@ -119,21 +125,15 @@ def _content(publication_type="systematic review", llm=None):
         preferences=RequestPreferences(collaborators=3, context="The user is an SHO."),
         proforma={"hoursPerWeek": "3 to 5"}, search_date="2026-09-28",
         pubmed=FakePubMed(),
-        llms={"search_strategy": llm, "protocol_drafting": llm, "prospero_form": llm},
+        llms={"search_strategy": llm, "protocol_drafting": llm, "prospero_form": llm,
+              "plain_language": llm},
     ), llm
 
 
-def _text(path):
-    doc = Document(path)
-    cells = [c.text for t in doc.tables for r in t.rows for c in r.cells]
-    return "\n".join([p.text for p in doc.paragraphs] + cells)
-
-
-def test_format_citation_variants():
-    many = _paper("1", "T", authors=("A A", "B B", "C C", "D D"))
-    assert _format_citation(many).startswith("A A, B B, C C, et al. (2021). T.")
-    no_doi = _format_citation(_paper("2", "T2", authors=(), doi=None))
-    assert "PMID: 2." in no_doi and "DOI:" not in no_doi
+def _html(c, proforma=None):
+    m = build_model(c, proforma=proforma or {"hoursPerWeek": "3 to 5"},
+                    retrieval_query="vitamin d[tiab] NOT review", retrieval_count=300)
+    return m, render_html(m)
 
 
 def test_strategies_get_real_counts_and_mesh_is_checked():
@@ -159,18 +159,15 @@ def test_similar_work_combines_reviews_and_prospero_ranked():
     assert any(t.startswith("PROSPERO CRD9") for t in titles)
 
 
-def test_systematic_guide_has_every_spec_section(tmp_path):
+def test_systematic_guide_has_every_section_and_verbatim_text():
     c, llm = _content()
-    ws = create_workspace(base=tmp_path, request_id="sr")
-    text = _text(build_guide(ws, c))
-    for heading in ("Novelty statement", "PICO", "Rationale", "Similar existing work",
-                    "Feasibility", "Search strategies", "Translated syntax",
-                    "Suggested papers", "Protocol", "PROSPERO registration entry",
-                    "Register now", "screening platform", "Risk of bias tool",
-                    "Reporting guideline", "Aims and objectives", "Data analysis",
-                    "Data extraction template", "PRISMA flow diagram",
-                    "Publication structure", "Grey literature", "Timeline",
-                    "rejected", "Search appendix", "Find collaborators", "Disclaimers"):
+    m, html = _html(c)
+    text = unescape(html)
+    for st in m["steps"]:
+        assert f">{st['name']}</h2>" in html and f">{st['name']}</a>" in html, st["name"]
+    for heading in ("Read this first", "Your project at a glance", "PICO", "Glossary",
+                    "Every search we ran", "Register your protocol on PROSPERO",
+                    "Include or exclude", "PRISMA flow diagram", "Papers we suggest you read"):
         assert heading in text, heading
     assert ("This title was checked against PROSPERO and the published literature on "
             "28/09/2026") in text
@@ -179,23 +176,22 @@ def test_systematic_guide_has_every_spec_section(tmp_path):
     assert "Methodological support for this study was provided by Symposed." in text
     assert "321" in text  # a real strategy count
     assert "https://doi.org/10.1/unclear" in text  # own-access list
-    assert "draft review_question" in text  # PROSPERO entry
-    assert len(llm.calls) == 3
+    assert len(llm.calls) == 4
 
 
-def test_literature_review_skips_sr_only_sections(tmp_path):
+def test_literature_review_skips_sr_only_sections():
     c, llm = _content("literature review")
-    ws = create_workspace(base=tmp_path, request_id="lit")
-    text = _text(build_guide(ws, c))
-    assert "PROSPERO registration entry" not in text and "PRISMA flow diagram" not in text
-    assert "Register now" not in text
-    assert "Journals to consider" in text and "J Test (2 papers)" in text
-    assert "Selecting and appraising sources" in text
+    m, html = _html(c)
+    assert "Register your protocol on PROSPERO" not in html and "PRISMA flow diagram" not in html
+    assert "Journals to consider" in html and "J Test (2 papers)" in html
+    assert "Appraise the quality of the studies" in html
     assert PROSPERO_SCHEMA not in llm.calls  # no PROSPERO call for a literature review
+    assert m["prospero"] is None
 
 
 def test_rule_based_choices():
-    assert risk_of_bias_tool("Randomised controlled trials") == "RoB 2 (randomised trials)"
+    assert risk_of_bias_tool("Randomised controlled trials").startswith("RoB 2")
+    assert risk_of_bias_tool("Systematic reviews of the Hall technique").startswith("ROBIS")
     assert "ROBINS-I" in risk_of_bias_tool("RCTs and cohort studies (randomised or not)")
     assert risk_of_bias_tool("studies", "Diagnostic accuracy").startswith("QUADAS-2")
     assert risk_of_bias_tool("prediction model studies").startswith("PROBAST")

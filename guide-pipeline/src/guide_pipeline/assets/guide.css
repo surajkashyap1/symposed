@@ -1,0 +1,189 @@
+/* Symposed Publication Guide, print stylesheet (WeasyPrint).
+   Brand: claret #7A2E2E, ink #1B2A2E, paper #FBFAF7, teal #0F6F66.
+   Newsreader for headings, Hanken Grotesk for text. Never below 7pt. */
+
+@font-face { font-family: "Newsreader"; src: url(fonts/Newsreader-400.ttf); font-weight: 400; }
+@font-face { font-family: "Newsreader"; src: url(fonts/Newsreader-600.ttf); font-weight: 600; }
+@font-face { font-family: "Newsreader"; src: url(fonts/Newsreader-400italic.ttf); font-style: italic; }
+@font-face { font-family: "Hanken Grotesk"; src: url(fonts/HankenGrotesk-400.ttf); font-weight: 400; }
+@font-face { font-family: "Hanken Grotesk"; src: url(fonts/HankenGrotesk-500.ttf); font-weight: 500; }
+@font-face { font-family: "Hanken Grotesk"; src: url(fonts/HankenGrotesk-600.ttf); font-weight: 600; }
+@font-face { font-family: "Hanken Grotesk"; src: url(fonts/HankenGrotesk-700.ttf); font-weight: 700; }
+
+:root {
+  --claret: #7A2E2E; --ink: #1B2A2E; --paper: #FBFAF7; --muted: #5C574E;
+  --line: #E5DFD3; --fill: #F1EDE4; --teal: #0F6F66; --ochre: #B07A1F;
+  --red-bg: #FBE4E1; --red-line: #C0473A; --red-ink: #7A1F16;
+  --green-bg: #DDF0EC; --amber-bg: #FBF0D9; --amber-ink: #6B4A0F;
+}
+
+@page {
+  size: A4;
+  margin: 22mm 18mm 20mm 18mm;
+  background: var(--paper) url(watermark.svg) no-repeat center 55% / 125mm auto;
+  @top-left { content: "Symposed Publication Guide"; font: 600 7.5pt "Hanken Grotesk";
+              color: var(--claret); letter-spacing: 0.06em; text-transform: uppercase; }
+  @top-right { content: string(section); font: 500 7.5pt "Hanken Grotesk"; color: var(--muted); }
+  @bottom-left { content: string(guidetitle); font: 400 7pt "Hanken Grotesk"; color: var(--muted);
+                 width: 140mm; }
+  @bottom-right { content: counter(page); font: 600 8pt "Hanken Grotesk"; color: var(--ink); }
+}
+@page cover {
+  margin: 0;
+  background: var(--claret) url(watermark-cover.svg) no-repeat right -30mm bottom -25mm / 170mm auto;
+  @top-left { content: none; } @top-right { content: none; }
+  @bottom-left { content: none; } @bottom-right { content: none; }
+}
+
+html { font-family: "Hanken Grotesk", sans-serif; font-size: 9.6pt; line-height: 1.5;
+       color: var(--ink); }
+body { margin: 0; }
+h1, h2, h3, h4 { font-family: "Newsreader", serif; font-weight: 600; color: var(--ink);
+                 line-height: 1.2; break-after: avoid; }
+h2 { font-size: 15pt; margin: 18pt 0 6pt; color: var(--claret); }
+h3 { font-size: 11.5pt; margin: 14pt 0 4pt; }
+h4 { font-family: "Hanken Grotesk"; font-size: 9.6pt; margin: 10pt 0 3pt; }
+p { margin: 0 0 6pt; orphans: 3; widows: 3; }
+a { color: var(--claret); text-decoration: none; border-bottom: 0.5pt solid #C9A9A5; }
+ul, ol { margin: 0 0 7pt; padding-left: 15pt; }
+li { margin-bottom: 2.5pt; }
+strong { font-weight: 700; }
+.muted { color: var(--muted); }
+.small { font-size: 8pt; }
+.keep { break-inside: avoid; }
+.guidetitle { string-set: guidetitle content(); }
+
+/* -- cover --------------------------------------------------------------- */
+.cover { page: cover; height: 297mm; box-sizing: border-box; padding: 26mm 22mm 20mm;
+         color: #FBF4EF; position: relative; break-after: page; }
+.cover .brand { display: flex; align-items: center; gap: 10pt; }
+.cover .brand img { width: 26mm; }
+.cover .brand span { font: 600 20pt "Newsreader"; letter-spacing: 0.01em; }
+.cover .kicker { margin-top: 44mm; font: 600 9pt "Hanken Grotesk"; letter-spacing: 0.16em;
+                 text-transform: uppercase; color: #F0C9C2; }
+.cover h1 { color: #FFFFFF; font-size: 27pt; line-height: 1.15; margin: 8pt 0 14pt;
+            max-width: 160mm; }
+.cover .pill { display: inline-block; border: 1pt solid #F0C9C2; border-radius: 20pt;
+               padding: 3pt 11pt; font: 600 8.5pt "Hanken Grotesk"; color: #FFFFFF; }
+.cover .for { margin-top: 26mm; font: italic 13pt "Newsreader"; color: #FFFFFF; }
+.cover .built { margin-top: 4pt; font-size: 9.5pt; color: #F6E3DF; max-width: 150mm; }
+.cover .dates { position: absolute; bottom: 22mm; left: 22mm; right: 22mm;
+                border-top: 0.6pt solid #C98A82; padding-top: 8pt; display: flex; gap: 18mm;
+                font-size: 8.5pt; color: #F6E3DF; }
+.cover .dates b { display: block; color: #FFFFFF; font-size: 10pt; }
+
+/* -- section openers and step banners ---------------------------------- */
+.section { break-before: page; }
+.section-title { string-set: section content(); font-size: 22pt; color: var(--ink);
+                 margin: 0 0 4pt; }
+.lead { font-size: 10.5pt; color: var(--muted); margin-bottom: 12pt; }
+
+/* The banner starts at the text edge and runs off the right edge of the page. */
+.banner { margin: 0 -18mm 14pt 0; padding: 10pt 18mm 11pt 14pt; color: #FFFFFF;
+          border-radius: 6pt 0 0 6pt; display: flex; align-items: center; gap: 12pt;
+          break-after: avoid; }
+.banner .num { font: 600 30pt/1 "Newsreader"; min-width: 26pt; text-align: center;
+               padding-right: 12pt; border-right: 1pt solid rgba(255,255,255,0.45); }
+.banner .label { font: 600 7.5pt "Hanken Grotesk"; letter-spacing: 0.14em;
+                 text-transform: uppercase; opacity: 0.85; }
+.banner h2 { string-set: section "Step " attr(data-n) ". " content(); color: #FFFFFF;
+             font-size: 18pt; margin: 1pt 0 2pt; }
+.banner .sum { font-size: 9.2pt; opacity: 0.95; }
+
+/* -- callout boxes ------------------------------------------------------ */
+.box { border-radius: 6pt; padding: 8pt 11pt 6pt 11pt; margin: 8pt 0 10pt;
+       break-inside: avoid; border-left: 4pt solid; }
+.box .box-title { font: 700 8.6pt "Hanken Grotesk"; letter-spacing: 0.06em;
+                  text-transform: uppercase; margin-bottom: 3pt; }
+.box p:last-child, .box ul:last-child { margin-bottom: 2pt; }
+.box-warn { background: var(--red-bg); border-color: var(--red-line); color: var(--red-ink); }
+.box-warn .box-title::before { content: "!  "; }
+.box-edit { background: var(--amber-bg); border-color: var(--ochre); color: var(--amber-ink); }
+.box-tip { background: var(--green-bg); border-color: var(--teal); color: #0B4A44; }
+.box-note { background: #EEF3F7; border-color: #2F5D7C; color: #1E3D52; }
+.box-quote { background: #FFFFFF; border-color: var(--claret); color: var(--ink);
+             font-family: "Newsreader"; font-size: 11pt; }
+
+/* -- tables ------------------------------------------------------------- */
+table { width: 100%; border-collapse: separate; border-spacing: 0; margin: 6pt 0 10pt;
+        font-size: 8.4pt; line-height: 1.38; }
+th { background: var(--ink); color: #FFFFFF; text-align: left; font-weight: 600;
+     padding: 5pt 6pt; vertical-align: bottom; }
+th:first-child { border-top-left-radius: 5pt; }
+th:last-child { border-top-right-radius: 5pt; }
+td { padding: 4.5pt 6pt; border-bottom: 0.6pt solid var(--line); vertical-align: top;
+     background: #FFFFFF; }
+tbody tr:nth-child(even) td { background: #F7F4EE; }
+tr { break-inside: avoid; }
+thead { display: table-header-group; }
+table.compact { font-size: 7.4pt; line-height: 1.32; }
+table.compact td, table.compact th { padding: 3.5pt 4.5pt; }
+table.keyval td:first-child { font-weight: 700; width: 30%; color: var(--claret);
+                              background: #F7F1EF; }
+table.teal th { background: var(--teal); }
+table.claret th { background: var(--claret); }
+table.slate th { background: #2F5D7C; }
+.tag { display: inline-block; border-radius: 10pt; padding: 0.5pt 6pt; font-size: 7pt;
+       font-weight: 700; }
+.tag-pubmed { background: #E2EEF6; color: #1E3D52; }
+.tag-guess { background: var(--amber-bg); color: var(--amber-ink); }
+.tag-rec { background: var(--teal); color: #FFFFFF; }
+
+/* -- searches ---------------------------------------------------------- */
+.search { border: 1pt solid var(--line); border-radius: 7pt; margin: 10pt 0 12pt;
+          background: #FFFFFF; break-inside: avoid; }
+.search-head, .query { break-inside: avoid; break-after: avoid; }
+.search.rec { border-color: var(--teal); border-width: 1.6pt; }
+.search-head { padding: 7pt 10pt; background: var(--fill); border-radius: 6pt 6pt 0 0;
+               display: flex; align-items: baseline; gap: 8pt; }
+.search.rec .search-head { background: var(--green-bg); }
+.search-head .sn { font: 600 12pt "Newsreader"; color: var(--claret); }
+.search-body { padding: 7pt 10pt 8pt; }
+code, .query { font-family: "DejaVu Sans Mono", monospace; font-size: 7.6pt; }
+.query { display: block; background: #1F2D31; color: #F3EEE4; border-radius: 5pt;
+         padding: 7pt 9pt; white-space: pre-wrap; word-break: break-all; line-height: 1.45;
+         margin: 5pt 0; }
+.shot { width: 70%; display: block; border: 1pt solid var(--line); border-radius: 5pt; margin: 6pt auto 2pt;
+        break-inside: avoid; }
+.caption { font-size: 7.6pt; color: var(--muted); margin-bottom: 6pt; }
+.search .caption { text-align: center; }
+
+/* -- overview ------------------------------------------------------------ */
+.stats { display: flex; gap: 6pt; margin: 8pt 0 12pt; }
+.stat { flex: 1; border-radius: 6pt; padding: 7pt 9pt; background: #FFFFFF;
+        border: 1pt solid var(--line); border-top: 3pt solid var(--claret); }
+.stat b { display: block; font: 600 17pt "Newsreader"; color: var(--claret); }
+.stat span { font-size: 7.6pt; color: var(--muted); line-height: 1.3; display: block; }
+.flow { display: flex; flex-wrap: wrap; gap: 6pt; margin: 6pt 0 10pt; }
+.flow .fs { width: 31.5%; box-sizing: border-box; border-radius: 6pt; padding: 6pt 8pt;
+            color: #FFFFFF; min-height: 50pt; break-inside: avoid; }
+.flow .fs b { font: 600 13pt "Newsreader"; margin-right: 4pt; }
+.flow .fs .t { font-weight: 700; font-size: 8.8pt; }
+.flow .fs .d { font-size: 7.6pt; opacity: 0.95; line-height: 1.32; margin-top: 2pt; }
+.figure { margin: 6pt 0 12pt; break-inside: avoid; text-align: center; }
+.figure svg { max-width: 100%; height: auto; }
+
+/* -- checklists and contents -------------------------------------------- */
+ul.check { list-style: none; padding-left: 0; }
+ul.check li { padding-left: 16pt; position: relative; }
+ul.check li::before { content: ""; position: absolute; left: 0; top: 2pt; width: 8pt;
+                      height: 8pt; border: 1.1pt solid var(--teal); border-radius: 2pt; }
+ol.howto { counter-reset: h; list-style: none; padding-left: 0; }
+ol.howto > li { counter-increment: h; padding-left: 20pt; position: relative; margin-bottom: 4pt; }
+ol.howto > li::before { content: counter(h); position: absolute; left: 0; top: 0.5pt;
+                        width: 13pt; height: 13pt; border-radius: 7pt; background: var(--claret);
+                        color: #fff; font: 700 7.5pt/13pt "Hanken Grotesk"; text-align: center; }
+.toc { list-style: none; padding: 0; margin-top: 10pt; }
+.toc li { margin: 0; padding: 5pt 0; border-bottom: 0.6pt solid var(--line); font-size: 10pt; }
+.toc li a { border: 0; color: var(--ink); }
+.toc li a::after { content: leader(".") target-counter(attr(href), page); color: var(--muted); }
+.toc .tn { display: inline-block; width: 18pt; height: 14pt; border-radius: 3pt;
+           color: #fff; text-align: center; font: 700 8pt/14pt "Hanken Grotesk";
+           margin-right: 7pt; }
+.toc .sub { padding-left: 25pt; font-size: 9pt; color: var(--muted); }
+.two-col { columns: 2; column-gap: 14pt; }
+.two-col > * { break-inside: avoid; }
+.files { display: flex; gap: 6pt; margin: 6pt 0 10pt; }
+.file { flex: 1; border: 1pt solid var(--line); background: #fff; border-radius: 6pt;
+        padding: 6pt 8pt; font-size: 8pt; }
+.file b { display: block; font-size: 8.6pt; color: var(--claret); }

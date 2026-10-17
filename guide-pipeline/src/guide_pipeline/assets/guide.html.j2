@@ -1,0 +1,565 @@
+{#- Symposed Publication Guide. House style: plain English for beginners, no
+    semicolons, no dashes used as punctuation. Step names come from m.steps
+    only (see guide_model.steps) so every reference matches. -#}
+{%- set S = {} -%}
+{%- for st in m.steps %}{% set _ = S.update({st.key: st}) %}{% endfor -%}
+{%- macro sref(key) %}<strong>step {{ S[key].number }} ({{ S[key].name }})</strong>{% endmacro -%}
+{%- macro banner(key) -%}
+{%- set st = S[key] -%}
+<div class="banner" id="step-{{ st.number }}" style="background: {{ colour(st.number) }}">
+  <div class="num">{{ st.number }}</div>
+  <div>
+    <div class="label">Step {{ st.number }} of {{ m.steps|length }}</div>
+    <h2 data-n="{{ st.number }}">{{ st.name }}</h2>
+    <div class="sum">{{ st.summary }}</div>
+  </div>
+</div>
+{%- endmacro -%}
+{%- macro edit_box(what) -%}
+<div class="box box-edit"><div class="box-title">This is a starting point</div>
+<p>{{ what }} Change it as you see fit. You know your field, your supervisor and your
+team, and you will learn more about the literature as you go.</p></div>
+{%- endmacro -%}
+<!doctype html>
+<html lang="en-GB">
+<head><meta charset="utf-8"><title>{{ m.title }}</title>
+<link rel="stylesheet" href="guide.css"></head>
+<body>
+
+{# ===================================================================== cover #}
+<section class="cover">
+  <div class="brand"><img src="logo-cream.svg" alt=""><span>Symposed</span></div>
+  <div class="kicker">Publication Guide · {{ m.publication_type|capitalize }}</div>
+  <h1 class="guidetitle">{{ m.title }}</h1>
+  <span class="pill">Your step by step plan from question to journal</span>
+  <div class="for">Prepared for {{ m.prepared_for or "you" }}</div>
+  <div class="built">Built around your answers: {{ profile_line }}</div>
+  <div class="dates">
+    <div><b>{{ fmt_date(m.generated_on) }}</b>Guide prepared</div>
+    <div><b>{{ fmt_date(m.search_date) }}</b>Searches run</div>
+    <div><b>{{ m.novelty_date }}</b>Question checked for novelty</div>
+  </div>
+</section>
+
+{# ================================================================== contents #}
+<section>
+  <h1 class="section-title" style="string-set: section 'Contents'">Contents</h1>
+  <ul class="toc">
+    <li><a href="#read-first">Read this first</a></li>
+    <li><a href="#glance">Your project at a glance</a></li>
+    <li><a href="#how-to-use">How to use this guide</a></li>
+    {%- for st in m.steps %}
+    <li><span class="tn" style="background: {{ colour(st.number) }}">{{ st.number }}</span><a href="#step-{{ st.number }}">{{ st.name }}</a></li>
+    {%- endfor %}
+    <li><a href="#glossary">Appendix A. Glossary of terms</a></li>
+    <li><a href="#search-log">Appendix B. Every search we ran</a></li>
+    {%- if m.references %}<li><a href="#references">Appendix C. References</a></li>{% endif %}
+  </ul>
+</section>
+
+{# ============================================================ read this first #}
+<section class="section" id="read-first">
+  <h1 class="section-title">Read this first</h1>
+  <p class="lead">Please read these notes before you start. They explain what this guide is,
+  what it is not, and what you are responsible for.</p>
+
+  <div class="box box-warn"><div class="box-title">This guide is a set of recommendations</div>
+  <p>Everything in this guide is our recommendation, not a rule you have to follow to the
+  letter. You are the author of your research. Symposed cannot take responsibility for any
+  research you produce, for the decisions you make while doing it, or for whether it is
+  published.</p></div>
+
+  <div class="box box-warn"><div class="box-title">Everything here is a starting point</div>
+  <p>The search strategies, the list of suggested papers, the protocol, the decision trees and
+  the PROSPERO draft are all drafts. At every step, edit them as you see fit. They are there
+  to save you time, not to replace your own judgement.</p></div>
+
+  <div class="box box-warn"><div class="box-title">Screen the papers yourself</div>
+  <p>We strongly recommend that you do your own screening of every paper. In
+  {{ sref("screen") }} we list papers we think are worth reading for your project, but we
+  could not read the full text of most of them, and we do not tell you which to include. That
+  decision is yours.</p></div>
+
+  <div class="box box-warn"><div class="box-title">Novelty is never permanent</div>
+  <p>We checked your question against PROSPERO and the published literature on
+  {{ m.novelty_date }}. New reviews are registered and published every day, so someone could
+  register or publish the same question before you. It is your responsibility to check that
+  your question is still new before you start and again before you submit. The sooner you
+  {% if m.systematic %}register your protocol{% else %}start{% endif %}, the smaller this
+  risk.</p></div>
+
+  <div class="box box-warn"><div class="box-title">Our standard disclaimers</div>
+  {%- for para in disclaimers %}<p>{{ para }}</p>{% endfor %}</div>
+
+  <div class="box box-tip"><div class="box-title">Get a supervisor on board</div>
+  <p>You do not need a supervisor to start, and this guide is written so you can begin on your
+  own. We do strongly recommend showing your question and plan to a supervisor early. They can
+  confirm the idea is sound and new in their field, spot problems before you spend weeks on
+  them, and help you submit to a journal. Supervisors are far more likely to say yes when you
+  bring a defined project that is already under way, as you will with this guide.</p></div>
+</section>
+
+{# =========================================================== project at glance #}
+<section class="section" id="glance">
+  <h1 class="section-title">Your project at a glance</h1>
+  <p class="lead">Your research question, why it matters, how big the job is, and the nine
+  steps from here to a journal.</p>
+
+  <div class="box box-quote">{{ m.title }}</div>
+
+  <h3>Your question broken down (PICO)</h3>
+  <p>PICO splits a question into the <strong>P</strong>opulation, the
+  <strong>I</strong>ntervention or exposure, the <strong>C</strong>omparator and the
+  <strong>O</strong>utcomes. It keeps your search and your decisions focused.</p>
+  <table class="keyval claret"><thead><tr><th>Part</th><th>For your question</th></tr></thead><tbody>
+  {%- for k, v in m.pico %}<tr><td>{{ k }}</td><td>{{ v }}</td></tr>{% endfor %}
+  </tbody></table>
+
+  <h3>Why this question matters</h3>
+  <p>{{ m.rationale }}</p>
+
+  <h3>How big is the job?</h3>
+  <div class="stats">
+    <div class="stat"><b>{{ m.papers|length }}</b><span>papers we suggest you read (step 4)</span></div>
+    <div class="stat"><b>{{ "{:,}".format(m.feasibility.records_to_screen or 0) }}</b><span>records you can expect to screen in PubMed alone</span></div>
+    <div class="stat"><b>{{ m.profile.team }}</b><span>people we recommend, so two screen every paper</span></div>
+    <div class="stat"><b>{{ m.timeline_assumptions.total_weeks }}</b><span>weeks at {{ "%g"|format(m.timeline_assumptions.hours_per_week_each) }} hours a week each</span></div>
+  </div>
+
+  <h3>Your nine steps</h3>
+  <div class="flow">
+  {%- for st in m.steps %}
+    <div class="fs" style="background: {{ colour(st.number) }}"><b>{{ st.number }}</b><span class="t">{{ st.name }}</span><div class="d">{{ st.summary }}</div></div>
+  {%- endfor %}
+  </div>
+
+  <h3>Your timeline</h3>
+  <div class="figure">{{ gantt_svg|safe }}</div>
+  <p class="caption">Based on {{ "%g"|format(m.timeline_assumptions.hours_per_week_each) }} hours a
+  week for each person, a team of {{ m.timeline_assumptions.team }}, about
+  {{ "{:,}".format(m.timeline_assumptions.records_to_screen or 0) }} records to screen and about
+  {{ m.timeline_assumptions.eligible_estimate }} papers to read in full. Steps that share a week
+  overlap. If you have more time, it will go faster.</p>
+</section>
+
+{# ================================================================ how to use #}
+<section class="section" id="how-to-use">
+  <h1 class="section-title">How to use this guide</h1>
+  <p class="lead">Work through the steps in order. Each step starts with a coloured banner, tells
+  you what to do in numbered instructions and links to every free tool you need.</p>
+  <ol class="howto">
+    <li>Read <strong>Read this first</strong> and <strong>Your project at a glance</strong>.</li>
+    <li>Share this guide with your team, and with a supervisor if you have one.</li>
+    <li>Do each step in order and tick the checklist at the end of it before moving on.</li>
+    <li>Whenever you meet a word you do not know, look it up in the
+      <a href="#glossary">glossary</a> at the back.</li>
+  </ol>
+  <h3>Files that come with this guide</h3>
+  <div class="files">
+    <div class="file"><b>Paper tracker (Excel)</b>Every suggested paper, ready for screening,
+    data extraction and risk of bias, with drop down choices.</div>
+    <div class="file"><b>Protocol (Word)</b>Your plan for the review, ready for you to edit.</div>
+    {%- if m.systematic %}
+    <div class="file"><b>PROSPERO draft (Word)</b>The registration form with the fields filled
+    in for you.</div>
+    {%- endif %}
+  </div>
+  <h3>Free tools you will use</h3>
+  <table class="teal"><thead><tr><th style="width:22%">Tool</th><th>What it is for</th><th style="width:30%">Link</th></tr></thead><tbody>
+    <tr><td>PubMed</td><td>Searching for medical research. Free for everyone.</td><td><a href="https://pubmed.ncbi.nlm.nih.gov/">pubmed.ncbi.nlm.nih.gov</a></td></tr>
+    {%- if m.systematic %}<tr><td>PROSPERO</td><td>Checking your question is new and registering your protocol.</td><td><a href="https://www.crd.york.ac.uk/prospero/">crd.york.ac.uk/prospero</a></td></tr>{% endif %}
+    <tr><td>Rayyan</td><td>Screening papers with your team. Free and easy to use.</td><td><a href="https://www.rayyan.ai/">rayyan.ai</a></td></tr>
+    <tr><td>Zotero</td><td>A free reference manager that stores your papers and formats your references.</td><td><a href="https://www.zotero.org/">zotero.org</a></td></tr>
+    {%- for t in m.rob_tools %}<tr><td>{{ t.name }}</td><td>Judging {{ t.use_for }}.</td><td><a href="{{ t.link }}">{{ short_url(t.link) }}</a></td></tr>{% endfor %}
+    <tr><td>Excel or Google Sheets</td><td>Opening the paper tracker that comes with this guide.</td><td><a href="https://sheets.google.com/">sheets.google.com</a></td></tr>
+  </tbody></table>
+</section>
+
+{# ============================================================ step: check #}
+<section class="section">
+  {{ banner("check") }}
+  <p>Before you put in any work, make sure nobody has already answered your question. We did
+  this check for you, and this is what we found:</p>
+  <div class="box box-note"><div class="box-title">Our novelty check</div><p>{{ novelty_statement }}</p></div>
+
+  <h3>Check it again yourself</h3>
+  <ol class="howto">
+    {%- if m.systematic %}
+    <li>Go to <a href="https://www.crd.york.ac.uk/prospero/">PROSPERO</a> and search for the
+    main words in your title. Read the titles of any recent registrations.</li>
+    {%- endif %}
+    <li>Open <a href="{{ review_check_url }}">this PubMed search for existing reviews</a> on
+    your topic. It uses search strategy {{ m.papers_search_number or 1 }} with the systematic
+    review filter switched on. Look at anything published since {{ fmt_date(m.search_date) }}.</li>
+    <li>If something looks very close to your question, read its abstract. If it answers the
+    same question in the same people, contact us before you start and we will help you adjust
+    the question.</li>
+    <li>Show your question to a supervisor or senior colleague in the field and ask whether they
+    know of any similar work in progress.</li>
+  </ol>
+
+  {%- if m.similar %}
+  <h3>The closest existing work, and how yours differs</h3>
+  <table class="slate"><thead><tr><th style="width:45%">Existing review or registration</th><th>How your question is different</th></tr></thead><tbody>
+  {%- for s in m.similar %}<tr><td><a href="{{ s.url }}">{{ s.title }}</a></td><td>{{ s.difference or "Read this one and decide whether it overlaps with your question." }}</td></tr>{% endfor %}
+  </tbody></table>
+  {%- endif %}
+
+  <h3>Bringing in a supervisor</h3>
+  <p>A supervisor is usually a senior doctor, dentist or academic in the field. You do not need
+  one to start, but it is a good idea to have one before you submit. To ask someone:</p>
+  <ol class="howto">
+    <li>Choose someone who works or publishes in this area. Your own department is a good place
+      to start.</li>
+    <li>Send a short email with your question, one paragraph on why it matters and the plan in
+      this guide. Say how far you have already got.</li>
+    <li>Ask them to confirm the idea is sound and new, and whether they would be willing to
+      check your work and help you submit.</li>
+  </ol>
+  <div class="keep"><h4>Before you move on</h4>
+  <ul class="check"><li>You searched{% if m.systematic %} PROSPERO and{% endif %} PubMed yourself and found nothing that answers your question.</li>
+  <li>You are happy with the question, or you have edited it.</li></ul></div>
+</section>
+
+{# ========================================================= step: protocol #}
+<section class="section">
+  {{ banner("protocol") }}
+  <p>A protocol is your written plan for the review, made before you start searching. It sets
+  out the question, which papers count and how you will analyse them, so that you and your
+  team make decisions the same way and nobody can say you changed the rules to suit the
+  results. Some people call it a standard operating procedure or SOP.</p>
+  {{ edit_box("We have drafted your protocol in the Word file that comes with this guide.") }}
+
+  <h3>Aim</h3><p>{{ m.aims }}</p>
+  {%- if m.objectives %}<h3>Objectives</h3><ul>{% for o in m.objectives %}<li>{{ o }}</li>{% endfor %}</ul>{% endif %}
+
+  <h3>Which papers count (eligibility criteria)</h3>
+  <table class="teal"><thead><tr><th style="width:25%">Rule</th><th>What a paper needs</th></tr></thead><tbody>
+    <tr><td><strong>Population</strong></td><td>{{ m.criteria.population }}</td></tr>
+    <tr><td><strong>Intervention or exposure</strong></td><td>{{ m.criteria.intervention }}</td></tr>
+    {%- if m.criteria.comparator %}<tr><td><strong>Comparator</strong></td><td>{{ m.criteria.comparator }}</td></tr>{% endif %}
+    <tr><td><strong>Outcomes</strong></td><td>{{ m.criteria.outcomes }}</td></tr>
+    <tr><td><strong>Study designs</strong></td><td>{{ m.criteria.designs }}</td></tr>
+    {%- if m.criteria.setting %}<tr><td><strong>Setting</strong></td><td>{{ m.criteria.setting }}</td></tr>{% endif %}
+    {%- for x in m.criteria.other_inclusion %}<tr><td><strong>Also needed</strong></td><td>{{ x }}</td></tr>{% endfor %}
+  </tbody></table>
+  {%- if m.criteria.exclusion %}
+  <table class="claret"><thead><tr><th>Leave a paper out if</th></tr></thead><tbody>
+  {%- for x in m.criteria.exclusion %}<tr><td>{{ x }}</td></tr>{% endfor %}</tbody></table>
+  {%- endif %}
+  {%- if m.criteria_reasoning %}
+  <h3>Why we chose these rules</h3>
+  <table><thead><tr><th style="width:25%">Rule</th><th>Our reasoning</th></tr></thead><tbody>
+  {%- for r in m.criteria_reasoning %}<tr><td><strong>{{ r.criterion }}</strong></td><td>{{ r.reasoning }}</td></tr>{% endfor %}
+  </tbody></table>
+  {%- endif %}
+
+  {%- if m.systematic %}
+  <h3>Register your protocol on PROSPERO</h3>
+  {%- for para in registration_urgency %}<p>{{ para }}</p>{% endfor %}
+  <ol class="howto">
+    <li>Edit the protocol with your team until you are all happy with it.</li>
+    <li>Create a free account on <a href="https://www.crd.york.ac.uk/prospero/">PROSPERO</a> and
+      start a new registration.</li>
+    <li>Copy each field from the PROSPERO draft Word file into the form. Fill in the parts only
+      you can, such as the names of your team, the dates and any funding.</li>
+    <li>Submit it before you start screening. Write your registration number (it starts with
+      CRD) on your protocol and in your paper.</li>
+  </ol>
+  {{ edit_box("The PROSPERO draft is written from the protocol above.") }}
+  {%- else %}
+  <div class="box box-tip"><div class="box-title">Registration is optional for this review type</div>
+  <p>PROSPERO only accepts systematic reviews. You can still make a public, dated record of your
+  plan by uploading the protocol to the free <a href="https://osf.io/registries">Open Science
+  Framework</a>.</p></div>
+  {%- endif %}
+  <div class="keep"><h4>Before you move on</h4>
+  <ul class="check"><li>Your team has read and agreed the protocol.</li>
+  {%- if m.systematic %}<li>You have submitted your PROSPERO registration.</li>{% endif %}</ul></div>
+</section>
+
+{# =========================================================== step: search #}
+<section class="section">
+  {{ banner("search") }}
+  <p>A search strategy is the exact text you type into a database to find papers. It combines
+  words with <strong>OR</strong> (either word, which widens the search) and
+  <strong>AND</strong> (both ideas, which narrows it). It also uses MeSH terms, which are
+  PubMed's standard topic labels, and the <code>*</code> symbol, which finds every ending of a
+  word.</p>
+  <table class="slate compact keep"><thead><tr><th style="width:24%">You will see</th><th>What it means</th></tr></thead><tbody>
+    <tr><td><code>[tiab]</code></td><td>Look for the word in the title or abstract.</td></tr>
+    <tr><td><code>[Mesh]</code></td><td>Search the MeSH topic label, which also finds papers that use other words for it.</td></tr>
+    <tr><td><code>child*</code></td><td>Finds child, children, childhood and so on.</td></tr>
+    <tr><td><code>"two words"</code></td><td>Finds the exact phrase.</td></tr>
+    <tr><td><code>( ... OR ... )</code></td><td>Any of the words in the brackets.</td></tr>
+  </tbody></table>
+
+  <h3>Your search strategies</h3>
+  <p>We wrote {{ m.searches|length }} numbered search strategies and ran each one in PubMed on
+  {{ fmt_date(m.search_date) }}. {% if m.recommended_search_number %}We recommend
+  <strong>search strategy {{ m.recommended_search_number }}</strong> for your own search.{% endif %}
+  {{ m.recommendation_reason }}</p>
+  {{ edit_box("These strategies are drafts. As you read papers you will find new words for your topic, so add them.") }}
+  {%- for s in m.searches %}
+  <div class="search{% if s.recommended %} rec{% endif %}">
+    <div class="search-head"><span class="sn">Search strategy {{ s.number }}</span>
+      <span><strong>{{ s.name }}</strong></span>
+      {% if s.recommended %}<span class="tag tag-rec">RECOMMENDED</span>{% endif %}</div>
+    <div class="search-body">
+      <p>{{ s.purpose }}</p>
+      <span class="query">{{ s.query }}</span>
+      <p class="small">PubMed records on {{ fmt_date(m.search_date) }}: <strong>{{ "{:,}".format(s.count) if s.count is not none else "not available" }}</strong>
+        · <a href="{{ pubmed_url(s.query) }}">Open this search in PubMed</a></p>
+      {%- if m.screenshots.get(s.number|string) %}
+      <img class="shot" src="{{ m.screenshots[s.number|string] }}" alt="">
+      <div class="caption">What search strategy {{ s.number }} looked like in PubMed on {{ fmt_date(m.search_date) }}. Paste the strategy into the search box exactly as written.</div>
+      {%- endif %}
+    </div>
+  </div>
+  {%- endfor %}
+
+  <h3>How to run and save your search in PubMed</h3>
+  <ol class="howto">
+    <li>Go to <a href="https://pubmed.ncbi.nlm.nih.gov/">PubMed</a>, paste the strategy into the
+      search box and press Search.</li>
+    <li>Write down the date and the number of results in the Search log sheet of your tracker.</li>
+    <li>Click <strong>Send to</strong>, choose <strong>Citation manager</strong>, set
+      <strong>Selection</strong> to All results and click <strong>Create file</strong>. This
+      saves a file you can upload to Rayyan in {{ sref("screen") }}.</li>
+  </ol>
+
+  <h3>Other databases</h3>
+  <p>Searching more than one database finds papers PubMed misses. We could not run these
+  ourselves, so check the counts and adjust the syntax when you run them.
+  {% if m.profile.databases %}You told us you have access to: {{ m.profile.databases|join(", ") }}.{% endif %}</p>
+  <div class="search"><div class="search-head"><span class="sn">Embase</span><span>through your library, <a href="https://www.embase.com/">embase.com</a></span></div>
+    <div class="search-body"><span class="query">{{ m.embase }}</span></div></div>
+  <div class="search"><div class="search-head"><span class="sn">Cochrane CENTRAL</span><span><a href="https://www.cochranelibrary.com/advanced-search">cochranelibrary.com</a></span></div>
+    <div class="search-body"><span class="query">{{ m.cochrane }}</span></div></div>
+
+  <h3>Grey literature</h3>
+  <p>Grey literature is research that is not published in journals. Checking it shows you have
+  been thorough.</p>
+  <ul>{% for g in grey %}<li>{{ g }}</li>{% endfor %}</ul>
+  <div class="keep"><h4>Before you move on</h4>
+  <ul class="check"><li>You ran your chosen strategy in every database you have access to.</li>
+  <li>You recorded the date and result count of each search in the tracker.</li>
+  <li>You exported the results of each search to a file.</li></ul></div>
+</section>
+
+{# =========================================================== step: screen #}
+<section class="section">
+  {{ banner("screen") }}
+  <p>Screening means going through every paper your search found and deciding whether it meets
+  your rules. You do it in two rounds: first from the title and abstract only, then by reading
+  the full text of the papers that are left. Two people should screen every paper without
+  seeing each other's decisions, then agree any differences.</p>
+
+  <h3>Set up Rayyan</h3>
+  <ol class="howto">
+    <li>Create a free account at <a href="https://www.rayyan.ai/">rayyan.ai</a> and start a new
+      review.</li>
+    <li>Upload the files you exported in {{ sref("search") }}. Rayyan finds the duplicates for
+      you.</li>
+    <li>Invite your co-screener and switch on <strong>blind mode</strong> so you cannot see each
+      other's decisions.</li>
+    <li>Each of you marks every paper Include, Exclude or Maybe, using the decision tree below.</li>
+    <li>Switch blind mode off, discuss every paper you disagree on and record the agreed decision
+      in the tracker.</li>
+  </ol>
+  <p class="small muted">Covidence (<a href="https://www.covidence.org/">covidence.org</a>) does
+  the same job if your university subscribes.</p>
+
+  <h3>Include or exclude: a decision tree for your project</h3>
+  {%- if tree_svg %}
+  <div class="figure">{{ tree_svg|safe }}</div>
+  {%- endif %}
+  <div class="box box-warn"><div class="box-title">This decision tree comes from your draft protocol</div>
+  <p>We built this tree from the eligibility rules in your protocol. The protocol may itself
+  need editing once you see what the literature looks like and what information each paper
+  actually reports. If you change the rules, change the tree too.</p></div>
+
+  <h3>Your paper tracker</h3>
+  <p>The Excel file that comes with this guide has a Screening sheet with every paper below
+  already filled in. Each screener records a decision from the drop down (Include, Exclude or
+  Further review needed) and, for exclusions, the reason. The reasons in the drop down come from
+  the decision tree above.</p>
+
+  <h3>Papers we suggest you read</h3>
+  <p>These are the papers we found using <strong>search strategy {{ m.papers_search_number or 1 }}</strong>
+  in step 3 ({{ S["search"].name }}), on {{ fmt_date(m.search_date) }}. We think each one is
+  worth reading or reviewing for your project. We have not rated them and we do not tell you
+  which to include. What you do with them is up to you.</p>
+  <div class="box box-warn"><div class="box-title">These are suggestions, not your screening</div>
+  <p>We could read the full text of only some of these papers. Please screen every paper
+  yourself, and remember your own search will find papers that are not on this list.</p></div>
+  {%- if m.papers %}
+  <table class="compact"><thead><tr>
+    <th style="width:4%">#</th><th style="width:15%">First author, year</th><th>Title</th>
+    <th style="width:16%">Journal</th><th style="width:15%">Likely publication type</th>
+    <th style="width:10%">Sample size</th><th style="width:11%">Link</th></tr></thead><tbody>
+  {%- for p in m.papers %}<tr>
+    <td>{{ p.n }}</td><td>{{ p.first_author }}{% if p.first_published or p.year %}, {{ p.first_published or p.year }}{% endif %}</td>
+    <td>{{ p.title }}</td><td>{{ p.journal }}</td>
+    <td>{{ p.publication_type }}<br><span class="tag {{ 'tag-pubmed' if p.publication_type_basis == 'PubMed' else 'tag-guess' }}">{{ 'from PubMed' if p.publication_type_basis == 'PubMed' else ('our estimate' if p.publication_type_basis == 'our estimate' else p.publication_type_basis) }}</span></td>
+    <td>{{ p.sample_size or "Not stated" }}</td>
+    <td><a href="{{ p.url }}">{{ p.id_label }} {{ p.pmid }}</a>{% if p.full_text_open %}<br><span class="small">free full text</span>{% endif %}</td></tr>
+  {%- endfor %}</tbody></table>
+  <p class="caption">"From PubMed" means PubMed itself labels the paper with this type.
+  "Our estimate" means PubMed gives no type, so we made an educated guess from the title and
+  abstract. Check it when you read the paper.</p>
+  {%- endif %}
+  {%- if m.own_access %}
+  <h4>Papers to get through your library</h4>
+  <p>These papers are not free to read online. Ask your university or NHS library for the full
+  text.</p>
+  <ul class="small">{% for x in m.own_access %}<li>{{ x.title }}{% if x.doi %} · <a href="https://doi.org/{{ x.doi }}">doi.org/{{ x.doi }}</a>{% endif %}</li>{% endfor %}</ul>
+  {%- endif %}
+  <div class="keep"><h4>Before you move on</h4>
+  <ul class="check"><li>Two people screened every title and abstract independently.</li>
+  <li>You read the full text of every paper still in, and recorded a reason for each exclusion.</li>
+  <li>You agreed every disagreement and wrote the final decision in the tracker.</li></ul></div>
+</section>
+
+{# ========================================================== step: extract #}
+<section class="section">
+  {{ banner("extract") }}
+  <p>Data extraction means copying the same set of details out of every included paper into
+  one table, so you can compare them side by side. Your tracker has a Data extraction sheet with
+  a column for each of these:</p>
+  <table class="teal compact"><thead><tr><th style="width:6%">#</th><th>Detail to extract</th></tr></thead><tbody>
+  {%- for f in m.extraction_fields %}<tr><td>{{ loop.index }}</td><td>{{ f }}</td></tr>{% endfor %}
+  </tbody></table>
+  <ol class="howto">
+    <li>Both extractors try the sheet on the same two papers first, then compare and agree how
+      to fill each column.</li>
+    <li>Split the remaining papers. A second person checks a sample of the other's work.</li>
+    <li>If a detail is missing from a paper, write "not reported" rather than leaving it blank.</li>
+  </ol>
+  {%- for t in m.rob_tools %}{% for c in t.companions %}{% if 'CHARMS' in c.name %}
+  <div class="box box-tip"><div class="box-title">Use the CHARMS checklist</div>
+  <p>Your review includes prediction model studies. The
+  <a href="{{ c.link }}">CHARMS checklist</a> {{ c.why }}. Add its items to your extraction sheet.</p></div>
+  {% endif %}{% endfor %}{% endfor %}
+  {{ edit_box("Add or remove columns to suit what your included papers actually report.") }}
+  <div class="keep"><h4>Before you move on</h4>
+  <ul class="check"><li>Every included paper has a full row in the Data extraction sheet.</li></ul></div>
+</section>
+
+{# ============================================================= step: bias #}
+<section class="section">
+  {{ banner("bias") }}
+  <p>Not every study can be trusted equally. Risk of bias is the chance that the way a study was
+  designed or run has pushed its results away from the truth. You judge it with a structured
+  tool made for the type of study. For your review we recommend:</p>
+  {%- for t in m.rob_tools %}
+  <table class="keyval slate keep"><thead><tr><th colspan="2">{{ t.name }}: {{ t.full_name }}</th></tr></thead><tbody>
+    <tr><td>Use it for</td><td>{{ t.use_for|capitalize }}</td></tr>
+    <tr><td>Get it free</td><td><a href="{{ t.link }}">{{ t.link }}</a></td></tr>
+    <tr><td>Parts it checks</td><td>{{ t.domains|join(" · ") }}</td></tr>
+    <tr><td>Possible judgements</td><td>{{ t.judgements|join(", ") }}</td></tr>
+    {%- for c in t.companions %}<tr><td>Also useful</td><td><a href="{{ c.link }}">{{ c.name }}</a>, {{ c.why }}.</td></tr>{% endfor %}
+  </tbody></table>
+  {%- endfor %}
+  <h3>How to reach a judgement</h3>
+  <div class="figure">{{ rob_svg|safe }}</div>
+  <ol class="howto">
+    <li>Read the tool's guidance document once, from the link above.</li>
+    <li>Two people judge every included study independently, using the Risk of bias sheet in your
+      tracker, then agree any differences.</li>
+    <li>Use the judgements when you interpret your results. Give less weight to studies at high
+      risk of bias.</li>
+  </ol>
+  <div class="keep"><h4>Before you move on</h4>
+  <ul class="check"><li>Every included study has a judgement for every part of the tool and an
+  overall judgement.</li></ul></div>
+</section>
+
+{# ========================================================== step: analyse #}
+<section class="section">
+  {{ banner("analyse") }}
+  <p>Now you bring the results of the included studies together. This is called synthesis.
+  {% if m.systematic %}If the studies are similar enough you can combine their numbers in a
+  meta-analysis. If not, you describe and compare them in words.{% else %}In a literature review
+  you group the findings into themes and compare what the studies found.{% endif %}</p>
+  <h3>Our suggested approach</h3>
+  <p>{{ m.analysis }}</p>
+  {%- if m.skills %}
+  <h3>Skills you will need</h3>
+  <ul>{% for s in m.skills %}<li>{{ s }}</li>{% endfor %}</ul>
+  {%- endif %}
+  <div class="box box-tip"><div class="box-title">If you are new to statistics</div>
+  <p>Ask a supervisor or your university's statistics support service to check your plan before
+  you start. Free software such as <a href="https://www.jamovi.org/">jamovi</a> and Cochrane's
+  <a href="https://revman.cochrane.org/">RevMan</a> can do most review analyses.</p></div>
+  {{ edit_box("The analysis plan depends on what the included studies report.") }}
+</section>
+
+{# ============================================================ step: write #}
+<section class="section">
+  {{ banner("write") }}
+  <p>Journals expect reviews to follow a reporting guideline, which is a checklist of what your
+  paper must say. Use it as you write and submit the completed checklist with your paper.</p>
+  <ul>{% for r in m.reporting %}<li>{% if guideline_link(r) %}<a href="{{ guideline_link(r) }}">{{ r }}</a>{% else %}{{ r }}{% endif %}</li>{% endfor %}</ul>
+  <h3>Structure for your paper</h3>
+  <table class="claret compact"><thead><tr><th style="width:24%">Section</th><th>What goes in it</th></tr></thead><tbody>
+  {%- for h, subs in m.structure %}<tr><td><strong>{{ h }}</strong></td><td>{{ subs|join(" · ") }}</td></tr>{% endfor %}
+  </tbody></table>
+  {%- if prisma_svg %}
+  <h3>Your PRISMA flow diagram so far</h3>
+  <p>Figure 1 of your paper will be a PRISMA flow diagram showing how many papers you found,
+  removed and kept. Here it is with the numbers from our preliminary search. You will replace
+  them with your own.</p>
+  <div class="figure">{{ prisma_svg|safe }}</div>
+  {%- endif %}
+</section>
+
+{# =========================================================== step: submit #}
+<section class="section">
+  {{ banner("submit") }}
+  {%- if m.journals %}
+  <h3>Journals to consider</h3>
+  <p>These journals published the papers we suggest you read, so they are interested in this
+  topic. Read each journal's author guidelines and scope before you choose.</p>
+  <ul>{% for j, n in m.journals %}<li>{{ j }} ({{ n }} paper{{ "s" if n > 1 else "" }})</li>{% endfor %}</ul>
+  {%- endif %}
+  <h3>Common reasons this type of review is rejected</h3>
+  <ul>{% for r in rejection %}<li>{{ r }}</li>{% endfor %}</ul>
+  <h3>Declarations</h3>
+  <p>Copy this acknowledgement into your paper:</p>
+  <div class="box box-quote">{{ acknowledgement }}</div>
+  <div class="box box-note"><p>{{ ai_note }}</p></div>
+  <h3>Find collaborators</h3>
+  <p>{{ collaboration }}</p>
+  <div class="keep"><h4>Before you submit</h4>
+  <ul class="check"><li>You checked again that nobody has published your question.</li>
+  <li>Your completed reporting checklist is ready to upload.</li>
+  <li>Everyone who did the work agreed the author list and order.</li></ul></div>
+</section>
+
+{# ================================================================= appendix #}
+<section class="section" id="glossary">
+  <h1 class="section-title">Appendix A. Glossary of terms</h1>
+  <table class="keyval compact"><thead><tr><th>Term</th><th>What it means</th></tr></thead><tbody>
+  {%- for g in m.glossary %}<tr><td>{{ g.term }}</td><td>{{ g.definition }}</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+
+<section class="section" id="search-log">
+  <h1 class="section-title">Appendix B. Every search we ran</h1>
+  <p>Every search we ran while choosing and checking your question, with its result count, so
+  your methods can be reported in full.</p>
+  <table class="compact slate"><thead><tr><th style="width:14%">Source</th><th>Search</th><th style="width:9%">Records</th><th style="width:12%">Date</th></tr></thead><tbody>
+  {%- for x in m.search_appendix %}<tr><td>{{ x.source }}</td><td><code>{{ x.query }}</code></td><td>{{ "{:,}".format(x.count) if x.count is not none else "" }}</td><td>{{ fmt_date(x.run_at[:10]) }}</td></tr>{% endfor %}
+  </tbody></table>
+</section>
+
+{%- if m.references %}
+<section class="section" id="references">
+  <h1 class="section-title">Appendix C. References</h1>
+  <p class="muted">The papers cited in "Why this question matters".</p>
+  <ol class="small">{% for r in m.references %}<li>{{ r }}</li>{% endfor %}</ol>
+</section>
+{%- endif %}
+</body>
+</html>

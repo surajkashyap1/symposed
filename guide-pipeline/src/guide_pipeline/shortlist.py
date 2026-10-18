@@ -130,12 +130,48 @@ def write(folder: Path, opts: list[Alternative], *, topic: str, key: str,
             lines += [f"**Project brief.** {o.brief}", ""]
         lines += ["**PICO**", ""] + [f"- {k}: {v}" for k, v in o.pico] + [""]
         lines += [f"**Why it matters.** {o.rationale}", "", f"**Why it is new.** {o.why_novel}", ""]
+        lines += _novelty_md(o.novelty)
         lines += ["**Scope**", ""] + [f"- {k}: {v}" for k, v in o.scope] + [""]
         lines += [f"Best search ({o.search_count} results in PubMed): `{o.search_query}`", ""]
     path = folder / SHORTLIST_MD
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     _write_docx(folder / SHORTLIST_DOCX, opts, topic=topic, failed=failed, note=note)
     return path
+
+
+VERDICT_LABEL = {"novel": "New, as far as the closest papers show",
+                 "uncertain": "Uncertain: a person must check the closest papers",
+                 "not novel": "Not new", "dead": "New but unlikely to give a useful answer"}
+
+
+def _papers(novelty: dict) -> list[dict]:
+    order = {"same question": 0, "large": 1, "partial": 2, "background only": 3, "": 4}
+    closest = novelty.get("closest_pmid", "")
+    return sorted(novelty.get("papers", []),
+                  key=lambda e: (e["pmid"] != closest, order.get(e.get("overlap", ""), 4)))
+
+
+def _novelty_md(novelty: dict) -> list[str]:
+    if not novelty:
+        return []
+    lines = [f"**Novelty check (editor's view): {VERDICT_LABEL.get(novelty['verdict'], novelty['verdict'])}.** "
+             f"{novelty.get('editor_view', '')}", ""]
+    for label, key in (("What it would add", "adds"), ("Worth answering whatever it finds?",
+                                                       "worth_answering"),
+                       ("To make it stronger", "suggested_change")):
+        if novelty.get(key):
+            lines += [f"**{label}** {novelty[key]}", ""]
+    papers = _papers(novelty)
+    if papers:
+        lines += ["**Closest existing papers** (check these yourself)", ""]
+        for e in papers:
+            tag = " **(closest)**" if e["pmid"] == novelty.get("closest_pmid") else ""
+            overlap = f" Overlap: {e['overlap']}." if e.get("overlap") else ""
+            why = f" {e['why']}" if e.get("why") else ""
+            lines.append(f"- [{e['title']}](https://pubmed.ncbi.nlm.nih.gov/{e['pmid']}/) "
+                         f"({e['journal']}, {e.get('year') or ''}, {e['kind']}){tag}.{overlap}{why}")
+        lines.append("")
+    return lines
 
 
 def _write_docx(path: Path, opts: list[Alternative], *, topic: str, failed: dict[str, str],
@@ -161,6 +197,29 @@ def _write_docx(path: Path, opts: list[Alternative], *, topic: str, failed: dict
                 p = doc.add_paragraph()
                 p.add_run(f"{label}. ").bold = True
                 p.add_run(text)
+        if o.novelty:
+            nv = o.novelty
+            p = doc.add_paragraph()
+            p.add_run("Novelty check (editor's view): "
+                      f"{VERDICT_LABEL.get(nv['verdict'], nv['verdict'])}. ").bold = True
+            p.add_run(nv.get("editor_view", ""))
+            for label, key in (("What it would add. ", "adds"),
+                               ("Worth answering whatever it finds? ", "worth_answering"),
+                               ("To make it stronger. ", "suggested_change")):
+                if nv.get(key):
+                    q = doc.add_paragraph()
+                    q.add_run(label).bold = True
+                    q.add_run(nv[key])
+            papers = _papers(nv)
+            if papers:
+                doc.add_heading("Closest existing papers (check these yourself)", 2)
+                for e in papers:
+                    q = doc.add_paragraph(style="List Bullet")
+                    q.add_run(e["title"]).bold = e["pmid"] == nv.get("closest_pmid")
+                    q.add_run(f" ({e['journal']}, {e.get('year') or ''}, {e['kind']}, "
+                              f"PMID {e['pmid']}, https://pubmed.ncbi.nlm.nih.gov/{e['pmid']}/)")
+                    if e.get("overlap"):
+                        q.add_run(f" Overlap: {e['overlap']}. {e.get('why', '')}")
         for heading, rows in (("PICO", o.pico), ("Scope", o.scope)):
             if not rows:
                 continue

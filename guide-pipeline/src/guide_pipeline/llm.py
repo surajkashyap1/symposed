@@ -69,7 +69,7 @@ class TaskConfig:
 # can still be moved with MODEL_<TASK>.
 DECISION_TASKS = frozenset({
     "candidate_generation", "topic_generation", "gap_candidates", "axis_lens",
-    "final_check", "tie_break",
+    "final_check", "tie_break", "novelty_check",
 })
 TASKS: dict[str, tuple[str, bool]] = {
     "concept_mapping": ("low", False),
@@ -80,6 +80,9 @@ TASKS: dict[str, tuple[str, bool]] = {
     "gap_candidates": ("high", True),       # candidate questions from the gaps
     "axis_lens": ("high", True),            # rework a non novel question through an axis
     "final_check": ("high", True),          # novel, publishable, realistic?
+    # Would a journal see the question as new, and is it worth answering either way?
+    # The most important judgement in the pipeline (Samarth, 2026-10-18): max effort.
+    "novelty_check": ("max", True),
     "shortlist_brief": ("low", True),       # a short project brief per shortlisted question
     "search_strategy": ("medium", True),
     "attribute_extraction": ("low", False),
@@ -97,6 +100,12 @@ TASKS: dict[str, tuple[str, bool]] = {
     "outcome_grouping": ("low", False),
 }
 _EFFORTS = ("low", "medium", "high", "xhigh", "max")
+# Reply budget (thinking included). Maximum effort judgements think for longer than
+# the default allows (seen live: the novelty check cut off at 16,000), so they get
+# more, and are streamed because a request that long must be.
+DEFAULT_MAX_TOKENS = 16000
+TASK_MAX_TOKENS = {"novelty_check": 64000, "tie_break": 64000}
+_STREAM_ABOVE = 16000
 
 
 def task_config(settings: Settings, task: str) -> TaskConfig:
@@ -431,7 +440,11 @@ class AnthropicClient:
             params["extra_headers"] = {"anthropic-beta": "server-side-fallback-2026-07-01"}
             params["extra_body"] = {"fallbacks": "default"}
         try:
-            response = self._sdk().messages.create(**params)
+            if self.max_tokens > _STREAM_ABOVE:
+                with self._sdk().messages.stream(**params) as stream:
+                    response = stream.get_final_message()
+            else:
+                response = self._sdk().messages.create(**params)
         except anthropic.APIConnectionError as exc:
             raise LLMError(f"Anthropic unreachable: {exc}") from exc
         except anthropic.APIStatusError as exc:
@@ -548,6 +561,7 @@ def build_llm(
             thinking=cfg.thinking,
             task=task,
             fallbacks=settings.llm_fallbacks,
+            max_tokens=TASK_MAX_TOKENS.get(task, DEFAULT_MAX_TOKENS),
             meter=meter,
             batch=settings.llm_batch if batch is None else batch,
             concurrency=settings.llm_concurrency,

@@ -144,6 +144,14 @@ v1 above was the cut-down slice. We are now aligning it with the full
   only the pick gets the final check (it may ask for 2 or 3 full texts), and if
   it fails the shortlist comes back with it marked. The other options become the
   guide's alternatives. `PICK_BEFORE_GUIDE=false` restores the automatic choice.
+- **Journal novelty check** ✅ (`novelty.py`, Samarth 2026-10-18): before a
+  question reaches the shortlist, the decider (Opus 5.5, maximum effort, 64k
+  reply budget, streamed) reads the abstracts of the closest reviews of any
+  kind and the closest recent primary studies, labels each one's overlap, and
+  judges as an editor would: novel, not novel, dead (new but unlikely to give a
+  useful answer) or uncertain. Only novel and uncertain questions are shown,
+  each with its closest papers listed for a person to verify; the next best
+  question is checked until three pass (`NOVELTY_MAX_CHECKS`).
 
 ## Supplying full texts
 

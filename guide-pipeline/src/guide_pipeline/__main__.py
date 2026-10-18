@@ -378,7 +378,7 @@ RUN_TASKS = ("candidate_generation", "criteria_writing", "attribute_extraction",
              "protocol_drafting", "prospero_form", "plain_language",
              # review led discovery
              "topic_generation", "review_reading", "gap_candidates", "axis_lens",
-             "final_check", "shortlist_brief")
+             "final_check", "shortlist_brief", "novelty_check")
 
 
 def run_cmd(path: str, limit: int | None = None, abstracts_ok: bool = False) -> int:

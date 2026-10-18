@@ -42,6 +42,7 @@ class Alternative:
     pico: list[list[str]] = field(default_factory=list)
     brief: str = ""  # shortlist only: what the project is, in plain words
     scope: list[list[str]] = field(default_factory=list)  # what is in and out
+    novelty: dict = field(default_factory=dict)  # shortlist only: novelty.NoveltyCheck.as_dict()
 
     def as_dict(self) -> dict:
         return asdict(self)

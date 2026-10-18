@@ -281,10 +281,15 @@ def _reviews_mode(tmp_path, monkeypatch, screen_result, checks, choose_dir=None)
         return FinalCheck(title, [], [], ok, True, True, {}, "" if ok else "narrow it")
 
     monkeypatch.setattr(run_mod, "final_check", fake_check)
+    # novelty: everything passes unless the test names titles to drop
+    drop = checks.get("__not_novel__", set())
+    monkeypatch.setattr(run_mod.novelty, "screen", lambda scored, **kw: (
+        [x for x in scored if x.assessment.candidate.title not in drop][:kw["want"]], []))
     settings = _replace(settings_for(tmp_path), discovery_mode="reviews")
     meter = UsageMeter()
     llms = {t: object() for t in ("criteria_writing", "attribute_extraction", "screening",
-                                  "outcome_grouping", "tie_break", "shortlist_brief")}
+                                  "outcome_grouping", "tie_break", "shortlist_brief",
+                                  "novelty_check")}
     sources = SimpleNamespace(pubmed=SimpleNamespace(count=lambda q, **kw: 15),
                               clinicaltrials=None, europepmc=None)
     report = run_mod.run_request(
@@ -364,6 +369,23 @@ def test_a_failed_pick_asks_again_and_cannot_be_picked_twice(tmp_path, monkeypat
     shortlist.write_choice(folder, 1)  # the same pick again is refused without a new check
     with pytest.raises(shortlist.AwaitingChoice):
         _, seen = _reviews_mode(tmp_path, monkeypatch, _three(), {}, choose_dir=folder)
+
+
+def test_questions_that_fail_novelty_never_reach_the_shortlist(tmp_path, monkeypatch, stubbed):
+    from guide_pipeline import shortlist
+
+    with pytest.raises(shortlist.AwaitingChoice) as exc:
+        _reviews_mode(tmp_path, monkeypatch, _three(), {"__not_novel__": {"Second"}},
+                      choose_dir=tmp_path / "pick")
+    assert "Second" not in [o.title for o in exc.value.options]
+
+
+def test_pick_mode_needs_contact_when_nothing_is_novel(tmp_path, monkeypatch, stubbed):
+    report, _ = _reviews_mode(tmp_path, monkeypatch, _three(),
+                              {"__not_novel__": {"First", "Second", "Third"}},
+                              choose_dir=tmp_path / "pick")
+    assert report.outcome == "needs_contact"
+    assert "novelty" in report.screen.contact_reason
 
 
 def test_pick_mode_needs_contact_when_every_option_fails(tmp_path, monkeypatch, stubbed):

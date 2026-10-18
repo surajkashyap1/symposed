@@ -25,7 +25,7 @@ from typing import Any, Callable, Optional
 import httpx
 
 from . import alternatives as alt_mod
-from . import shortlist
+from . import novelty, shortlist
 from .candidates import (
     FILTER_PRIMARY,
     FOUND,
@@ -96,6 +96,7 @@ class RunReport:
     pack_path: str = ""  # zip of the PDF and companion files
     discovery: Optional[Discovery] = None  # review led discovery (guide v2)
     final_checks: list[FinalCheck] = field(default_factory=list)
+    novelty_checks: list[Any] = field(default_factory=list)
     alternatives: list[alt_mod.Alternative] = field(default_factory=list)
     swap: bool = False  # a re-run on an alternative the user chose
     seconds: dict[str, float] = field(default_factory=dict)
@@ -194,7 +195,7 @@ def build_metrics(report: RunReport, meter: UsageMeter, settings: Settings) -> d
         # finding the question: axis generation plus review led discovery
         "cost_candidates_usd": round(sum(meter.by_task.get(t, 0.0) for t in (
             "candidate_generation", "topic_generation", "review_reading", "gap_candidates",
-            "axis_lens", "final_check")), 4),
+            "axis_lens", "final_check", "novelty_check", "shortlist_brief")), 4),
         "cost_screening_usd": round(cost_screening, 4),
         "cost_per_screened_paper_usd": round(cost_screening / n_screened, 5) if n_screened else None,
         "model_calls": meter.calls,
@@ -318,13 +319,34 @@ def run_request(
     tied = tied_leaders(initial, margin=th.score_margin, max_tied=th.max_tied)
     picked_alternatives: Optional[list[alt_mod.Alternative]] = None
     if discovery is not None and forced is None and choose_dir is not None:
-        # A person picks from the top questions before anything else is spent.
-        top_scored = initial[:shortlist.SIZE]
+        # Every question is judged for novelty the way a journal editor would, best
+        # score first, until three pass. Then a person picks before anything else
+        # is spent.
+        say("Checking each question for novelty against the closest papers...")
+        top_scored, checks = timed("novelty", lambda: novelty.screen(
+            initial, llm=llms["novelty_check"], pubmed=sources.pubmed, th=th,
+            publication_type=report.publication_type, context=prefs.context,
+            want=shortlist.SIZE, say=say))
+        report.novelty_checks = checks
+        if not top_scored:
+            reason = "no question passed the novelty check: " + "; ".join(
+                f"{c.title}: {c.verdict}, {c.editor_view}" for c in checks)
+            say(reason)
+            report.outcome = NEEDS_CONTACT
+            report.screen = replace(screen, outcome=NEEDS_CONTACT, contact_reason=reason)
+            report.workspace = create_workspace(f"{label} needs contact", base=settings.output_dir)
+            _finish(report, meter, settings, extra={
+                "contact_reason": reason, "discovery": discovery.as_dict(),
+                "novelty_checks": [c.as_dict() for c in checks]})
+            return report
         say(f"Writing up the top {len(top_scored)} questions to pick from...")
         opts = timed("shortlist", lambda: shortlist.options(
             top_scored, criteria_llm=llms["criteria_writing"],
             brief_llm=llms["shortlist_brief"], publication_type=report.publication_type,
             review_years=th.review_years, team=prefs.collaborators))
+        by_title = {c.title: c for c in checks}
+        for o in opts:
+            o.novelty = by_title[o.title].as_dict() if o.title in by_title else {}
         topic = request.topic or request.search_topic
         failed = shortlist.failed_checks(choose_dir)
 
@@ -498,6 +520,7 @@ def run_request(
         "selection": selection.as_dict(),
         "discovery": discovery.as_dict() if discovery else None,
         "final_checks": [c.as_dict() for c in report.final_checks],
+        "novelty_checks": [c.as_dict() for c in report.novelty_checks],
         "alternatives": [a.as_dict() for a in report.alternatives],
         "swap": report.swap,
         "proforma": request.proforma,

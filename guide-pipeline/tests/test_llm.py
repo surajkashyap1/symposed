@@ -112,6 +112,19 @@ class FakeAnthropic:
         self.calls.append(kwargs)
         return self.replies.pop(0)
 
+    def stream(self, **kwargs):  # messages.stream(): a context manager
+        self.calls.append({**kwargs, "_streamed": True})
+        final = self.replies.pop(0)
+
+        class _Stream:
+            def __enter__(self):
+                return SimpleNamespace(get_final_message=lambda: final)
+
+            def __exit__(self, *exc):
+                return False
+
+        return _Stream()
+
 
 def reply(text, *, stop="end_turn", inp=1000, out=500, cache_write=0, cache_read=0):
     return SimpleNamespace(
@@ -408,3 +421,14 @@ def test_batch_poll_gives_up_on_a_persistent_outage():
     client.poll_retries = 2
     with pytest.raises(LLMError, match="unreachable"):
         client.complete_json_many([JsonCall("s", "u")])
+
+
+def test_max_effort_judgements_get_a_large_budget_and_are_streamed():
+    from guide_pipeline.llm import TASK_MAX_TOKENS
+
+    assert TASK_MAX_TOKENS["novelty_check"] > 16000
+    fake = FakeAnthropic(reply('{"a": 1}'), reply('{"b": 2}'))
+    assert AnthropicClient(api_key="k", client=fake, max_tokens=64000).complete_json("s", "u") == {"a": 1}
+    assert fake.calls[0]["_streamed"] and fake.calls[0]["max_tokens"] == 64000
+    AnthropicClient(api_key="k", client=fake).complete_json("s", "u")
+    assert "_streamed" not in fake.calls[1]

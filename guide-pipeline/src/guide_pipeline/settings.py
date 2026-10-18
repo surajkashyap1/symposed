@@ -72,6 +72,11 @@ class Thresholds:
     topic_max_reviews: int = 300                # a topic with more is too broad
     topic_min_primary: int = 30                 # primary studies a topic needs (last N years)
     max_topics: int = 8                         # topics proposed for a vague request
+    # Journal novelty check before a question reaches the shortlist (novelty.py)
+    novelty_reviews: int = 6                    # closest reviews of any kind, any type
+    novelty_primary: int = 8                    # closest recent primary studies
+    novelty_primary_years: int = 6              # ...from the last N years
+    novelty_max_checks: int = 9                 # questions checked to fill the shortlist
 
     @classmethod
     def from_env(cls) -> "Thresholds":
@@ -101,6 +106,10 @@ class Thresholds:
             topic_max_reviews=_get_int("TOPIC_MAX_REVIEWS", 300),
             topic_min_primary=_get_int("TOPIC_MIN_PRIMARY", 30),
             max_topics=_get_int("MAX_TOPICS", 8),
+            novelty_reviews=_get_int("NOVELTY_REVIEWS", 6),
+            novelty_primary=_get_int("NOVELTY_PRIMARY", 8),
+            novelty_primary_years=_get_int("NOVELTY_PRIMARY_YEARS", 6),
+            novelty_max_checks=_get_int("NOVELTY_MAX_CHECKS", 9),
         )
 
 

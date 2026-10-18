@@ -170,19 +170,89 @@ def test_store_uses_open_access_then_supplied_files_and_pauses_for_the_rest(tmp_
     needed = exc.value.request_path.read_text()
     assert "`2.docx`" in needed and "`3.docx`" in needed and "1: Review 1" in needed
     doc = Document()
-    doc.add_paragraph("Pasted full text of review two.")
+    doc.add_paragraph("Pasted full text of review two. " * 40)
     doc.save(tmp_path / "ft" / "2.docx")
     (tmp_path / "ft" / "3.skip").write_text("")
     store.require([ref("1"), ref("2"), ref("3")], stage="topic one")  # no pause now
     assert store.text(ref("1"))[1] == "full text (Europe PMC open access)"
     assert "Older adults were never studied" in store.text(ref("1"))[0]
     assert "References" not in store.text(ref("1"))[0] or "x" not in store.text(ref("1"))[0][-5:]
-    assert store.text(ref("2")) == ("Pasted full text of review two.", "full text (supplied docx)")
+    assert store.text(ref("2")) == (("Pasted full text of review two. " * 40).strip(),
+                                    "full text (supplied docx)")
     assert store.text(ref("3")) == (None, "abstract only")
 
 
 def test_abstracts_ok_never_pauses(tmp_path):
     FullTextStore(tmp_path, FakeEPMC(), abstracts_ok=True).require([ref("9")], stage="s")
+
+
+def blank_pdf(path):
+    from pypdf import PdfWriter
+
+    w = PdfWriter()
+    w.add_blank_page(width=595, height=842)
+    with open(path, "wb") as f:
+        w.write(f)
+
+
+def text_pdf(title, body="Results and discussion of the included studies. " * 60):
+    from weasyprint import HTML
+
+    return HTML(string=f"<h1>{title}</h1><p>{body}</p>").write_pdf()
+
+
+class FakeOpenAlex:
+    def __init__(self, pdfs):
+        self.pdfs = pdfs  # url -> bytes or None
+        self.asked = []
+
+    def open_access_pdf_urls(self, doi):
+        self.asked.append(doi)
+        return list(self.pdfs)
+
+    def download_pdf(self, url):
+        return self.pdfs[url]
+
+
+def test_a_scanned_pdf_does_not_count_and_the_request_says_why(tmp_path):
+    store = FullTextStore(tmp_path / "ft", FakeEPMC())
+    blank_pdf(tmp_path / "ft" / "2.pdf")
+    with pytest.raises(AwaitingFullTexts) as exc:
+        store.require([ref("2")], stage="s")
+    needed = exc.value.request_path.read_text()
+    assert "no text could be read from `2.pdf`" in needed and "scanned" in needed
+    (tmp_path / "ft" / "2.txt").write_text("The pasted text of review two. " * 50)
+    store.require([ref("2")], stage="s")  # a readable copy next to it is enough
+    assert store.text(ref("2"))[1] == "full text (supplied txt)"
+
+
+def test_an_open_access_pdf_from_openalex_is_saved_and_read(tmp_path):
+    oa = FakeOpenAlex({"https://pub/none.pdf": None,
+                       "https://pub/r2.pdf": text_pdf("Review 2 on ketoacidosis")})
+    store = FullTextStore(tmp_path / "ft", FakeEPMC(), openalex=oa)
+    r = ReviewRef("2", "Review 2 on ketoacidosis", "J", 2024, "10.1/x", ())
+    store.require([r], stage="s")  # no pause: the second link worked
+    assert oa.asked == ["10.1/x"] and (tmp_path / "ft" / "2.oa.pdf").exists()
+    text, basis = store.text(r)
+    assert basis == "full text (open access PDF)" and "included studies" in text
+
+
+def test_a_downloaded_pdf_of_another_paper_is_thrown_away(tmp_path):
+    oa = FakeOpenAlex({"https://pub/x.pdf": text_pdf("Something else about knees")})
+    store = FullTextStore(tmp_path / "ft", FakeEPMC(), openalex=oa)
+    r = ReviewRef("2", "Review 2 on ketoacidosis", "J", 2024, "10.1/x", ())
+    with pytest.raises(AwaitingFullTexts):
+        store.require([r], stage="s")
+    assert not (tmp_path / "ft" / "2.oa.pdf").exists()
+
+
+def test_openalex_is_not_asked_when_the_review_is_already_in(tmp_path):
+    oa = FakeOpenAlex({})
+    (tmp_path / "ft").mkdir()
+    (tmp_path / "ft" / "2.skip").write_text("")
+    FullTextStore(tmp_path / "ft", FakeEPMC(oa={"1"}), openalex=oa).require(
+        [ref("1"), ref("2")], stage="s")
+    assert oa.asked == []
 
 
 # -- the loop --------------------------------------------------------------------------

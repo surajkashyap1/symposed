@@ -118,8 +118,8 @@ v1 above was the cut-down slice. We are now aligning it with the full
 - **Guide v2, step 3: review led discovery** ✅ (`discovery.py`, `llm_cache.py`):
   topics one or two levels inside the specialty, each counted in PubMed (reviews
   and primary studies, last 10 years), fewest reviews first; the closest reviews
-  on the topic are read in full (Europe PMC open access fetched automatically,
-  the rest supplied by hand); the decider turns their gaps into questions, which
+  on the topic are read in full (Europe PMC open access and open access PDFs
+  listed by OpenAlex fetched automatically, the rest supplied by hand); the decider turns their gaps into questions, which
   go through the usual gates, with the 14 axes as a lens only when a gap
   question is not new enough; the next topic only if no real gap. After scoring,
   a final check reads the 2 or 3 reviews closest to the title and asks: new,
@@ -137,7 +137,11 @@ v1 above was the cut-down slice. We are now aligning it with the full
 
 ## Supplying full texts
 
-A review led run stops when it needs reviews that are not open access:
+A review led run first fetches what it can itself: Europe PMC open access
+text, then the open access PDF OpenAlex lists for the DOI (saved as
+`<PMID>.oa.pdf`, kept only if its text names the review). The download names the
+pipeline in its User-Agent and gives up when a publisher refuses, so free papers
+on some publisher sites still come to a person. It stops when it needs the rest:
 
 ```bash
 python -m guide_pipeline run output/requests/<order>.json
@@ -146,7 +150,8 @@ python -m guide_pipeline run output/requests/<order>.json
 
 Save each listed review in that folder as `<PMID>.docx` (pasted text is fine),
 `.pdf`, `.txt` or `.md`, or an empty `<PMID>.skip` if you cannot get it (its
-abstract is used). Run the same command again: everything before the pause is
+abstract is used). A file only counts if text can be read from it: a scanned
+PDF has none, and the run asks for the text pasted into Word instead. Run the same command again: everything before the pause is
 replayed from cache at no cost. `--abstracts-ok` uses abstracts for anything
 still missing instead of pausing. The Friday `batch` does the same per order:
 a paused order gets no run row and is picked up again next time.

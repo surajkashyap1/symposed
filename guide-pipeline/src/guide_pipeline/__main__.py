@@ -353,6 +353,7 @@ def _discovery_setup(settings, sources, llms, key: str, *, abstracts_ok: bool = 
 
     folder = _Path(settings.output_dir) / "discovery" / slugify(key, max_len=60)
     store = FullTextStore(folder / "fulltexts", getattr(sources, "europepmc", None),
+                          openalex=getattr(sources, "openalex", None),
                           abstracts_ok=abstracts_ok)
     return folder, store, cached(llms, folder / "llm_cache")
 

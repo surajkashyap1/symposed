@@ -11,8 +11,8 @@ closest existing reviews, not from the 14 axes alone:
      fewest reviews (but enough primary studies) is tried first.
   2. Neighbouring reviews. The most relevant systematic and literature reviews
      on the topic from the last N years, at most `max_fulltexts` of them.
-  3. Full texts. Open access reviews are fetched from Europe PMC. The rest are
-     requested from a person: the run stops with `AwaitingFullTexts`, listing
+  3. Full texts. Open access reviews are fetched from Europe PMC, or as an open
+     access PDF found through OpenAlex. The rest are requested from a person: the run stops with `AwaitingFullTexts`, listing
      each review and the file name to save it under. Running again resumes.
   4. Reading. The reader model reads each review: what it achieves, its
      limitations, the questions it opens and the gaps it names.
@@ -67,6 +67,8 @@ FILTER_REVIEWS = '(systematic[sb] OR review[pt] OR "scoping review"[pt])'
 GAP_AXIS = "Gap in existing reviews"
 SHORTLIST = 3  # a main question plus two alternatives
 SKIP_SUFFIX = ".skip"  # an empty <PMID>.skip file: "we could not get this one"
+FETCHED_SUFFIX = ".oa.pdf"  # an open access PDF the run downloaded itself
+MIN_READABLE_CHARS = 1000  # less text than this: a scanned PDF or an empty file
 
 
 # -- pausing for full texts --------------------------------------------------------
@@ -99,23 +101,52 @@ class AwaitingFullTexts(Exception):
 
 
 class FullTextStore:
-    """Full texts for one request: supplied files first, then Europe PMC open access."""
+    """Full texts for one request: supplied files, Europe PMC open access, then an
+    open access PDF found through OpenAlex. Anything else is asked of a person.
 
-    def __init__(self, folder: Path, europepmc: Any = None, *, max_chars: int = 120_000,
-                 abstracts_ok: bool = False):
+    A file only counts when text can be read from it: a scanned PDF (pictures of
+    the pages) gives none, so the run asks for the text pasted into Word instead
+    of quietly reading the abstract while calling it a full text.
+    """
+
+    def __init__(self, folder: Path, europepmc: Any = None, *, openalex: Any = None,
+                 max_chars: int = 120_000, abstracts_ok: bool = False):
         self.folder = Path(folder)
         self.folder.mkdir(parents=True, exist_ok=True)
         self.europepmc = europepmc
+        self.openalex = openalex
         self.max_chars = max_chars
         self.abstracts_ok = abstracts_ok  # treat every missing file as "not available"
         self._oa: dict[str, str] = {}
+        self._read: dict[tuple[Path, float], str] = {}
+
+    def _read_file(self, path: Path) -> str:
+        key = (path, path.stat().st_mtime)
+        if key not in self._read:
+            try:
+                self._read[key] = read_local_text(path).strip()
+            except Exception:  # noqa: BLE001  a broken file is an unreadable file
+                self._read[key] = ""
+        return self._read[key]
+
+    def _readable(self, path: Path) -> bool:
+        return len(self._read_file(path)) >= MIN_READABLE_CHARS
+
+    def _files(self, pmid: str) -> list[Path]:
+        return [p for suffix in (*LOCAL_SUFFIXES, FETCHED_SUFFIX)
+                if (p := self.folder / f"{pmid}{suffix}").exists()]
 
     def _local(self, pmid: str) -> Optional[Path]:
-        for suffix in (*LOCAL_SUFFIXES, SKIP_SUFFIX):
-            p = self.folder / f"{pmid}{suffix}"
-            if p.exists():
+        """The first readable file for this review, else its .skip file, else None."""
+        for p in self._files(pmid):
+            if self._readable(p):
                 return p
-        return None
+        skip = self.folder / f"{pmid}{SKIP_SUFFIX}"
+        return skip if skip.exists() else None
+
+    def unreadable(self, pmid: str) -> list[Path]:
+        """Supplied files with no text in them (most often a scanned PDF)."""
+        return [p for p in self._files(pmid) if not self._readable(p)]
 
     def _open_access(self, refs: list[ReviewRef]) -> None:
         todo = [r.pmid for r in refs if r.pmid not in self._oa]
@@ -126,13 +157,35 @@ class FullTextStore:
         except Exception:  # noqa: BLE001  open access is a bonus, never fatal
             pass
 
+    def _fetch_open_pdf(self, ref: ReviewRef) -> None:
+        """Save the open access PDF OpenAlex lists for this review, if one downloads
+        and really is this review (its title words are on the first pages)."""
+        if self.openalex is None or not ref.doi:
+            return
+        try:
+            urls = self.openalex.open_access_pdf_urls(ref.doi)
+        except Exception:  # noqa: BLE001  open access is a bonus, never fatal
+            return
+        path = self.folder / f"{ref.pmid}{FETCHED_SUFFIX}"
+        for url in urls[:3]:
+            try:
+                body = self.openalex.download_pdf(url)
+            except Exception:  # noqa: BLE001
+                body = None
+            if not body:
+                continue
+            path.write_bytes(body)
+            if self._readable(path) and _same_paper(ref.title, self._read_file(path)):
+                return
+            path.unlink()
+
     def text(self, ref: ReviewRef) -> tuple[Optional[str], str]:
         """(text, basis). Text is None when only the abstract can be used."""
         local = self._local(ref.pmid)
         if local is not None and local.suffix != SKIP_SUFFIX:
-            text = read_local_text(local).strip()
-            if text:
-                return text[: self.max_chars], f"full text (supplied {local.suffix[1:]})"
+            basis = ("full text (open access PDF)" if local.name.endswith(FETCHED_SUFFIX)
+                     else f"full text (supplied {local.suffix[1:]})")
+            return self._read_file(local)[: self.max_chars], basis
         pmcid = self._oa.get(ref.pmid)
         if pmcid and self.europepmc is not None:
             try:
@@ -144,11 +197,15 @@ class FullTextStore:
                 return ft.text, "full text (Europe PMC open access)"
         return None, "abstract only"
 
+    def _missing(self, refs: list[ReviewRef]) -> list[ReviewRef]:
+        return [r for r in refs if self._local(r.pmid) is None and r.pmid not in self._oa]
+
     def require(self, refs: list[ReviewRef], *, stage: str) -> None:
         """Stop the run if any review still needs a person to fetch it."""
         self._open_access(refs)
-        missing = [r for r in refs
-                   if self._local(r.pmid) is None and r.pmid not in self._oa]
+        for r in self._missing(refs):
+            self._fetch_open_pdf(r)
+        missing = self._missing(refs)
         if missing and not self.abstracts_ok:
             path = self.write_request(stage, refs, missing)
             raise AwaitingFullTexts(stage, missing, self.folder, path)
@@ -163,16 +220,33 @@ class FullTextStore:
             "Then run the same command again: the run picks up where it stopped.", "",
             "| Save as | Review | Journal, year | Links |", "|---|---|---|---|",
         ]
+        unreadable = []
         for r in missing:
             doi = f" · [DOI](https://doi.org/{r.doi})" if r.doi else ""
-            lines.append(f"| `{r.pmid}.docx` | {r.title} | {r.journal}, {r.year or ''} | "
+            bad = self.unreadable(r.pmid)
+            if bad:
+                unreadable.append((r, bad))
+            note = f" (no text could be read from {', '.join(f'`{p.name}`' for p in bad)})" if bad else ""
+            lines.append(f"| `{r.pmid}.docx`{note} | {r.title} | {r.journal}, {r.year or ''} | "
                          f"[PubMed]({r.url}){doi} |")
+        if unreadable:
+            lines += ["", "We could not read any text from the files marked above. They are "
+                      "most likely scanned PDFs (pictures of the pages). Open the article, "
+                      "copy its text into a Word document and save it as `<PMID>.docx` next "
+                      "to the old file.", ""]
         have = [r for r in refs if r not in missing]
         if have:
             lines += ["", "Already available (open access or supplied):", ""]
             lines += [f"- {r.pmid}: {r.title}" for r in have]
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         return path
+
+
+def _same_paper(title: str, text: str) -> bool:
+    """True when most of the title's words appear near the start of the text."""
+    words = {w for w in re.findall(r"[a-z0-9]+", title.lower()) if len(w) > 3}
+    head = " ".join(re.findall(r"[a-z0-9]+", text[:8000].lower()))
+    return not words or sum(w in head for w in words) / len(words) >= 0.6
 
 
 # -- topics -------------------------------------------------------------------------

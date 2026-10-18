@@ -265,7 +265,7 @@ def test_missing_dois_filled_from_crossref_for_plausible_papers_only():
     assert run_mod.fill_missing_dois(None, screening) == 0
 
 
-def _reviews_mode(tmp_path, monkeypatch, screen_result, checks):
+def _reviews_mode(tmp_path, monkeypatch, screen_result, checks, choose_dir=None):
     from dataclasses import replace as _replace
 
     from guide_pipeline.discovery import Discovery, FinalCheck
@@ -284,12 +284,13 @@ def _reviews_mode(tmp_path, monkeypatch, screen_result, checks):
     settings = _replace(settings_for(tmp_path), discovery_mode="reviews")
     meter = UsageMeter()
     llms = {t: object() for t in ("criteria_writing", "attribute_extraction", "screening",
-                                  "outcome_grouping", "tie_break")}
+                                  "outcome_grouping", "tie_break", "shortlist_brief")}
     sources = SimpleNamespace(pubmed=SimpleNamespace(count=lambda q, **kw: 15),
                               clinicaltrials=None, europepmc=None)
     report = run_mod.run_request(
         from_proforma(FORM, order_id="order-1"), settings=settings, sources=sources,
-        mirror=fresh_mirror(tmp_path), llms=llms, meter=meter, store=object())
+        mirror=fresh_mirror(tmp_path), llms=llms, meter=meter, store=object(),
+        choose_dir=choose_dir)
     return report, seen
 
 
@@ -311,6 +312,69 @@ def test_reviews_mode_needs_contact_when_every_final_check_fails(tmp_path, monke
     assert report.outcome == "needs_contact"
     assert "narrow it" in report.screen.contact_reason
     assert report.metrics["final_checks_failed"] == 1
+
+
+def _three():
+    a, b, c = (assessment(t, "pass") for t in ("First", "Second", "Third"))
+    return ScreenResult([a, b, c], [a, b, c], a, batches=1, outcome=FOUND)
+
+
+def test_pick_mode_stops_with_a_shortlist_before_any_final_check(tmp_path, monkeypatch, stubbed):
+    from guide_pipeline import shortlist
+
+    folder = tmp_path / "pick"
+    with pytest.raises(shortlist.AwaitingChoice) as exc:
+        _reviews_mode(tmp_path, monkeypatch, _three(), {}, choose_dir=folder)
+    assert len(exc.value.options) == 3
+    text = (folder / "SHORTLIST.md").read_text()
+    assert "## Option 1: " in text and "**Why it is new.**" in text and "**Scope**" in text
+    assert "python -m guide_pipeline pick pick <number>" in text
+    assert (folder / "shortlist.docx").exists()
+
+
+def test_pick_mode_checks_only_the_pick_and_keeps_the_others_as_alternatives(
+        tmp_path, monkeypatch, stubbed):
+    from guide_pipeline import shortlist
+
+    folder = tmp_path / "pick"
+    with pytest.raises(shortlist.AwaitingChoice) as exc:
+        _reviews_mode(tmp_path, monkeypatch, _three(), {}, choose_dir=folder)
+    picked = exc.value.options[1].title
+    shortlist.write_choice(folder, 2)
+    report, seen = _reviews_mode(tmp_path, monkeypatch, _three(), {picked: True},
+                                 choose_dir=folder)
+    assert seen == [picked] and report.title == picked and report.outcome == FOUND
+    assert [a.number for a in report.alternatives] == [1, 2]
+    assert picked not in [a.title for a in report.alternatives]
+
+
+def test_a_failed_pick_asks_again_and_cannot_be_picked_twice(tmp_path, monkeypatch, stubbed):
+    from guide_pipeline import shortlist
+
+    folder = tmp_path / "pick"
+    with pytest.raises(shortlist.AwaitingChoice) as exc:
+        _reviews_mode(tmp_path, monkeypatch, _three(), {}, choose_dir=folder)
+    first = exc.value.options[0].title
+    shortlist.write_choice(folder, 1)
+    with pytest.raises(shortlist.AwaitingChoice) as exc:
+        _reviews_mode(tmp_path, monkeypatch, _three(), {first: False}, choose_dir=folder)
+    assert "Option 1 failed the final check" in exc.value.note
+    assert shortlist.read_choice(folder) is None
+    assert "narrow it" in (folder / "SHORTLIST.md").read_text()
+    shortlist.write_choice(folder, 1)  # the same pick again is refused without a new check
+    with pytest.raises(shortlist.AwaitingChoice):
+        _, seen = _reviews_mode(tmp_path, monkeypatch, _three(), {}, choose_dir=folder)
+
+
+def test_pick_mode_needs_contact_when_every_option_fails(tmp_path, monkeypatch, stubbed):
+    from guide_pipeline import shortlist
+
+    a = assessment("Only", "pass")
+    screen = ScreenResult([a], [a], a, batches=1, outcome=FOUND)
+    folder = tmp_path / "pick"
+    shortlist.write_choice(folder, 1)
+    report, _ = _reviews_mode(tmp_path, monkeypatch, screen, {"Only": False}, choose_dir=folder)
+    assert report.outcome == "needs_contact" and "narrow it" in report.screen.contact_reason
 
 
 def _swap(tmp_path, monkeypatch, outcome):

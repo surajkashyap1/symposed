@@ -135,6 +135,16 @@ v1 above was the cut-down slice. We are now aligning it with the full
   `python -m guide_pipeline swap <run folder> <1|2> [--save]` re-runs the gates
   and PROSPERO check today and only then writes the full guide.
 
+- **Pick before the guide** ✅ (`shortlist.py`, Samarth 2026-10-18): after
+  scoring, a review led run stops with the top 3 questions in
+  `output/discovery/<order>/SHORTLIST.md` and `shortlist.docx` (title, project
+  brief, PICO, why it matters, why it is new, scope). A crowded first topic is
+  topped up from the next two topics through the axes (no extra full texts).
+  `python -m guide_pipeline pick <order> <n>` records the pick, then run again:
+  only the pick gets the final check (it may ask for 2 or 3 full texts), and if
+  it fails the shortlist comes back with it marked. The other options become the
+  guide's alternatives. `PICK_BEFORE_GUIDE=false` restores the automatic choice.
+
 ## Supplying full texts
 
 A review led run first fetches what it can itself: Europe PMC open access

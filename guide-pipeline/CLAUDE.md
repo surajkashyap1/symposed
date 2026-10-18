@@ -29,6 +29,8 @@ proforma. Separate from the Symposed Next.js app in the parent repo. Build
   it pauses with `AwaitingFullTexts` for reviews a person must fetch. Resuming
   is just running again: model replies are cached per request (`llm_cache.py`),
   so prompts must stay deterministic (no timestamps or random ordering).
+  After scoring it also pauses with `shortlist.AwaitingChoice` until a person
+  picks one of the top 3 questions (`pick` command, `PICK_BEFORE_GUIDE`).
   Live runs cost money: print the `UsageMeter` summary, and keep tests on fakes.
 - PROSPERO access goes ONLY through `prospero/adapter.py` (undocumented endpoint,
   may be replaced by a CRD feed). The pipeline queries the local mirror, never

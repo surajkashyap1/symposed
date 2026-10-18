@@ -80,6 +80,7 @@ TASKS: dict[str, tuple[str, bool]] = {
     "gap_candidates": ("high", True),       # candidate questions from the gaps
     "axis_lens": ("high", True),            # rework a non novel question through an axis
     "final_check": ("high", True),          # novel, publishable, realistic?
+    "shortlist_brief": ("low", True),       # a short project brief per shortlisted question
     "search_strategy": ("medium", True),
     "attribute_extraction": ("low", False),
     # Measured 2026-09-26: high was steadier than medium (7/8 vs 5/8 identical

@@ -495,6 +495,9 @@ def _named_refs(text: str, readings: list[ReviewReading]) -> str:
         i = int(m.group(1))
         return f"a review (PMID {readings[i - 1].pmid})" if 1 <= i <= len(readings) else "a review"
     out = _R_REF.sub(name, text)
+    # A sentence that now starts with "a review" gets its capital back.
+    out = re.sub(r"([.!?]\s+)a review \(PMID", r"\1A review (PMID", out)
+    out = re.sub(r"\s*\(axis:[^)]*\)", "", out, flags=re.I)  # our label, not the user's
     return out[0].upper() + out[1:] if out else out
 
 
@@ -591,7 +594,7 @@ class TopicTrial:
     readings: list[ReviewReading] = field(default_factory=list)
     gap_found: bool = False
     gap_summary: str = ""
-    route: str = ""  # gaps | gaps+axes | axes (no reviews) | no gap
+    route: str = ""  # gaps | gaps+axes | axes (no reviews) | axes (top up) | no gap
 
     def as_dict(self) -> dict:
         return {"topic": asdict(self.topic), "reviews": [asdict(r) for r in self.reviews],
@@ -653,7 +656,12 @@ def discover(
     def tried() -> tuple[str, ...]:
         return tuple(avoid_titles) + tuple(a.candidate.title for a in assessments)
 
+    def passing() -> int:
+        return sum(a.verdict.passed for a in assessments)
+
+    last = 0
     for i, topic in enumerate(usable, 1):
+        last = i
         trial = TopicTrial(topic)
         trials.append(trial)
         say(f"Topic {i}: {topic.name} ({topic.reviews} reviews in {th.review_years} years)")
@@ -712,8 +720,27 @@ def discover(
                 gate(extra, i)
             except LLMError as exc:
                 say(f"  top up failed: {exc}")
-        if passed:
+        if passing():
             break
+
+    # A crowded topic can leave fewer than three to pick from. Top up from the next
+    # topics through the axes only: no reviews to fetch now, and the closest reviews
+    # are still read in the final check if one of these is picked.
+    for j, topic in enumerate(usable[last:], last + 1):
+        if not 0 < passing() < SHORTLIST or j > last + 2:
+            break
+        say(f"  {passing()} passing: topping up from the next topic, {topic.name} "
+            "(axes only)")
+        trial = TopicTrial(topic, route="axes (top up)")
+        trials.append(trial)
+        try:
+            gate(generate_candidates(
+                llms["candidate_generation"], topic.name, landscape=landscape,
+                min_n=th.candidate_titles_min, max_n=th.candidate_titles_max,
+                min_axes=th.candidate_min_axes, max_per_axis=th.candidate_max_per_axis,
+                avoid=tried(), preferences=prefs, batch=j), j)
+        except LLMError as exc:
+            say(f"  top up failed: {exc}")
 
     survivors = rank_survivors(assessments)
     downgraded = sorted((a for a in assessments if a.verdict.outcome == DOWNGRADE),

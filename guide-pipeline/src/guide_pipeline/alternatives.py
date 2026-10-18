@@ -40,6 +40,8 @@ class Alternative:
     prospero_verdict: str
     trials_query: str = ""
     pico: list[list[str]] = field(default_factory=list)
+    brief: str = ""  # shortlist only: what the project is, in plain words
+    scope: list[list[str]] = field(default_factory=list)  # what is in and out
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -77,6 +79,21 @@ def why_novel(a: Any, *, review_years: int) -> str:
     return (f"On {date} we found {reviews} in PubMed (last {review_years} years) and {reg}.")
 
 
+def scope_rows(crit: Optional[Criteria], a: Any, *, publication_type: str) -> list[list[str]]:
+    """What the review would cover beyond its PICO: type, setting, size, in and out."""
+    k = a.counts
+    rows = [["Type of review", publication_type[:1].upper() + publication_type[1:]]]
+    if crit and crit.setting:
+        rows.append(["Setting", tidy(crit.setting)])
+    rows.append(["Size", f"About {k.eligible_studies} studies likely to fit, from about "
+                          f"{k.records_to_screen} search results to screen"])
+    if crit and crit.other_inclusion:
+        rows.append(["Also included", tidy(". ".join(crit.other_inclusion))])
+    if crit and crit.exclusion:
+        rows.append(["Left out", tidy(". ".join(crit.exclusion))])
+    return rows
+
+
 def build(assessments: list[Any], *, criteria_llm: Any, publication_type: str,
           review_years: int) -> list[Alternative]:
     out = []
@@ -101,5 +118,6 @@ def build(assessments: list[Any], *, criteria_llm: Any, publication_type: str,
             prospero_checked_on=(a.prospero.checked_on.strftime("%d/%m/%Y")
                                  if a.prospero else ""),
             prospero_verdict=a.prospero.verdict if a.prospero else "",
-            trials_query=c.trials_query, pico=pico))
+            trials_query=c.trials_query, pico=pico,
+            scope=scope_rows(crit, a, publication_type=publication_type)))
     return out

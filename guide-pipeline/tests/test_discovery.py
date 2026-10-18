@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 from docx import Document
 
-from guide_pipeline.candidates import CANDIDATES_SCHEMA, RequestPreferences
+from guide_pipeline.candidates import AXES, CANDIDATES_SCHEMA, RequestPreferences
 from guide_pipeline.discovery import (
     FINAL_SCHEMA,
     GAP_AXIS,
@@ -377,14 +377,40 @@ def test_too_few_passing_gap_questions_are_topped_up_through_the_axes(tmp_path):
     assert "Already reviewed" in lens_prompt and "Passes" not in lens_prompt.split("did not pass")[1].split("The reviews")[0]
 
 
+def test_a_short_shortlist_is_topped_up_from_the_next_topic_without_new_reviews(tmp_path):
+    axes_b = {"candidates": [
+        {"title": f"Topic B question {n}", "axis": ax, "pubmed_query": f"b_q {n}",
+         "trials_query": "b", "rationale": "r"}
+        for n, ax in enumerate(list(AXES)[:6], 1)]}
+    llm = SchemaLLM(topics=[topics_reply("af_q", [("Topic B", "b_q")])], reading=[READ],
+                    gaps=[gap(titles=("Passes",))])
+    plain = llm.complete_json
+
+    def by_topic(system, user, schema=None, cache_system=False):
+        if schema is CANDIDATES_SCHEMA:  # only topic B's axes batch has questions
+            llm.calls.append(("axes", user))
+            return axes_b if "Topic B" in user else {"candidates": []}
+        return plain(system, user, schema=schema, cache_system=cache_system)
+
+    llm.complete_json = by_topic
+    pm = FakePubMed(reviews={"af_q": 3, "b_q": 4}, primary={"af_q": 900, "b_q": 900})
+    d = run_discover(tmp_path, llm, pm)
+    assert [t.route for t in d.trials] == ["gaps", "axes (top up)"]
+    assert d.trials[1].reviews == [] and d.trials[1].readings == []  # nothing to fetch
+    titles = {a.candidate.title for a in d.screen.survivors}
+    assert "Passes" in titles and len(titles) == 7  # all pass in this fake
+
+
 def test_internal_review_labels_never_reach_the_user(tmp_path):
     reply = gap()
-    reply["candidates"][0]["rationale"] = "R1 left older adults out, and [R2] agrees."
+    reply["candidates"][0]["rationale"] = ("R1 left older adults out, and [R2] agrees. "
+                                           "R1 also asked (axis: Timing or dose).")
     llm = SchemaLLM(topics=[topics_reply("af_q", [])], reading=[READ], gaps=[reply])
     pm = FakePubMed(reviews={"af_q": 2}, primary={"af_q": 900})
     d = run_discover(tmp_path, llm, pm)
     r = d.screen.top.candidate.rationale
     assert "R1" not in r and "[R2]" not in r and r.startswith("A review (PMID ")
+    assert ". A review (PMID " in r and "axis:" not in r
 
 
 def test_topic_labels_are_stripped_and_a_busy_field_still_gets_tried():

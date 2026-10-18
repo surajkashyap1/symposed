@@ -25,6 +25,7 @@ from typing import Any, Callable, Optional
 import httpx
 
 from . import alternatives as alt_mod
+from . import shortlist
 from .candidates import (
     FILTER_PRIMARY,
     FOUND,
@@ -42,6 +43,7 @@ from .guide_content import assemble
 from .guide_model import build_model
 from .landscape import Landscape, assess_landscape
 from .llm import LLMClient, UsageMeter
+from .plain import tidy
 from .prospero import ProsperoMirror
 from .request import GuideRequest
 from .retrieval import RetrievalResult, retrieve
@@ -218,6 +220,7 @@ def run_request(
     screenshots: bool = True,
     store: Optional[FullTextStore] = None,
     forced: Optional[Candidate] = None,
+    choose_dir: Optional[Path] = None,
 ) -> RunReport:
     """One request end to end.
 
@@ -229,6 +232,10 @@ def run_request(
     `forced` is a swap: the user chose one of their alternatives. Its novelty
     checks (gates, PROSPERO) are re-run today, and if it still passes the full
     guide is written for it, with no new alternatives.
+
+    `choose_dir` (review led runs) makes the run stop after scoring with a
+    shortlist of the top questions (`shortlist.AwaitingChoice`) until a person
+    picks one. Only the picked question gets the final check.
     """
     say = progress or (lambda _m: None)
     th = settings.thresholds
@@ -309,7 +316,52 @@ def run_request(
     initial = rank([score_candidate(a, recent_share=shares[a.candidate.title], **score_kw)
                     for a in pool])
     tied = tied_leaders(initial, margin=th.score_margin, max_tied=th.max_tied)
-    if discovery is not None and forced is None:
+    picked_alternatives: Optional[list[alt_mod.Alternative]] = None
+    if discovery is not None and forced is None and choose_dir is not None:
+        # A person picks from the top questions before anything else is spent.
+        top_scored = initial[:shortlist.SIZE]
+        say(f"Writing up the top {len(top_scored)} questions to pick from...")
+        opts = timed("shortlist", lambda: shortlist.options(
+            top_scored, criteria_llm=llms["criteria_writing"],
+            brief_llm=llms["shortlist_brief"], publication_type=report.publication_type,
+            review_years=th.review_years, team=prefs.collaborators))
+        topic = request.topic or request.search_topic
+        failed = shortlist.failed_checks(choose_dir)
+
+        def ask(note: str = "") -> shortlist.AwaitingChoice:
+            path = shortlist.write(choose_dir, opts, topic=topic, key=choose_dir.name,
+                                   failed=failed, note=note)
+            return shortlist.AwaitingChoice(choose_dir, path, opts, note)
+
+        n = shortlist.read_choice(choose_dir)
+        if n is None or not 1 <= n <= len(opts) or opts[n - 1].title in failed:
+            raise ask()
+        chosen = top_scored[n - 1]
+        say(f"Final check on option {n}: {chosen.assessment.candidate.title}")
+        check = timed("final_check", lambda: final_check(
+            llms=llms, pubmed=sources.pubmed, store=store, assessment=chosen.assessment,
+            prefs=prefs, th=th, say=say))
+        report.final_checks.append(check)
+        if not check.passed:
+            reason = check.suggested_change or "; ".join(
+                f"{k}: {v}" for k, v in check.reasons.items())
+            shortlist.record_failed(choose_dir, check.title, tidy(reason))
+            failed = shortlist.failed_checks(choose_dir)
+            if any(o.title not in failed for o in opts):
+                raise ask(f"Option {n} failed the final check. Please pick another.")
+            reason = "every shortlisted question failed the final check: " + "; ".join(
+                f"{t}: {r}" for t, r in failed.items())
+            say(reason)
+            report.outcome = NEEDS_CONTACT
+            report.screen = replace(screen, outcome=NEEDS_CONTACT, contact_reason=reason)
+            report.workspace = create_workspace(f"{label} needs contact", base=settings.output_dir)
+            _finish(report, meter, settings, extra={
+                "contact_reason": reason, "discovery": discovery.as_dict(),
+                "final_checks": [c.as_dict() for c in report.final_checks]})
+            return report
+        tied = [chosen]
+        picked_alternatives = shortlist.alternatives_after(opts, n, failed=set(failed))
+    elif discovery is not None and forced is None:
         # Final check, best score first: read the reviews closest to the title and
         # ask whether it is new, publishable and realistic. The first to pass goes on.
         chosen = None
@@ -410,7 +462,13 @@ def run_request(
         llms=llms, screened_all=len(screening.papers) >= len(retrieval.papers)))
     report.content = content
     report.swap = forced is not None
-    if not report.swap:
+    if picked_alternatives is not None:
+        report.alternatives = picked_alternatives
+        if len(report.alternatives) < 2:
+            content.warnings.append(
+                f"Only {len(report.alternatives)} alternative question(s) are left after the "
+                "pick: the shortlist page offers fewer than two.")
+    elif not report.swap:
         failed = {c.title for c in report.final_checks if not c.passed}
         picked = alt_mod.pick(initial, winner_title=top.candidate.title, exclude=failed)
         say(f"Writing up {len(picked)} alternative question(s)...")

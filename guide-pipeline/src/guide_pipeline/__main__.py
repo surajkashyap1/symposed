@@ -359,6 +359,15 @@ def _discovery_setup(settings, sources, llms, key: str, *, abstracts_ok: bool = 
 
 
 def _print_pause(exc) -> None:
+    from .shortlist import AwaitingChoice
+
+    if isinstance(exc, AwaitingChoice):
+        print(f"\n  PAUSED: pick a question.{(' ' + exc.note) if exc.note else ''}")
+        for o in exc.options:
+            print(f"    {o.number}. {o.title}")
+        print(f"  Read {exc.path} (or send {exc.folder / 'shortlist.docx'}),")
+        print(f"  then: python -m guide_pipeline pick {exc.folder.name} <number>, and run again.")
+        return
     print(f"\n  PAUSED: {len(exc.missing)} full text(s) needed for {exc.stage}.")
     for r in exc.missing:
         print(f"    {r.pmid}  {r.title[:90]}")
@@ -369,7 +378,7 @@ RUN_TASKS = ("candidate_generation", "criteria_writing", "attribute_extraction",
              "protocol_drafting", "prospero_form", "plain_language",
              # review led discovery
              "topic_generation", "review_reading", "gap_candidates", "axis_lens",
-             "final_check")
+             "final_check", "shortlist_brief")
 
 
 def run_cmd(path: str, limit: int | None = None, abstracts_ok: bool = False) -> int:
@@ -399,19 +408,22 @@ def run_cmd(path: str, limit: int | None = None, abstracts_ok: bool = False) -> 
     batch = settings.llm_batch and not _SYNC and settings.llm_provider == "anthropic"
     print(f"  per-paper steps: {'Batch API (half price)' if batch else 'parallel calls'}\n")
     from .discovery import AwaitingFullTexts
+    from .shortlist import AwaitingChoice
 
-    store = None
+    store = choose_dir = None
     if settings.discovery_mode == "reviews":
         folder, store, llms = _discovery_setup(
             settings, sources, llms, request.order_id or _Path(path).stem,
             abstracts_ok=abstracts_ok)
+        choose_dir = folder if settings.pick_before_guide else None
         print(f"  review led discovery, files in {folder}\n")
     mirror = ProsperoMirror(settings.prospero_db)
     try:
         report = run_request(request, settings=settings, sources=sources, mirror=mirror,
                              llms=llms, meter=meter, limit=limit, store=store,
+                             choose_dir=choose_dir,
                              progress=lambda m: print(f"  {m}", flush=True))
-    except AwaitingFullTexts as exc:
+    except (AwaitingFullTexts, AwaitingChoice) as exc:
         _print_pause(exc)
         _print_cost(meter)
         return 3
@@ -514,6 +526,33 @@ def swap_cmd(run_folder: str, number: int, *, limit: int | None = None,
     return 0 if report.outcome == "found" else 1
 
 
+def pick_cmd(key: str, number: int) -> int:
+    """Record which shortlisted question to write the guide for."""
+    from .shortlist import SHORTLIST_MD, failed_checks, write_choice
+    from .workspace import slugify
+
+    settings = Settings.load()
+    folder = _Path(settings.output_dir) / "discovery" / slugify(key, max_len=60)
+    shortlist = folder / SHORTLIST_MD
+    if not shortlist.exists():
+        print(f"No shortlist for {key} (looked for {shortlist}).")
+        return 1
+    text = shortlist.read_text(encoding="utf-8")
+    heading = next((line for line in text.splitlines()
+                    if line.startswith(f"## Option {number}: ")), None)
+    if heading is None:
+        print(f"There is no option {number} in {shortlist}.")
+        return 1
+    title = heading.split(": ", 1)[1]
+    if title in failed_checks(folder):
+        print(f"Option {number} already failed the final check. Pick another.")
+        return 1
+    write_choice(folder, number)
+    print(f"Picked option {number}: {title}\nRun the batch (or the run command) again "
+          "to check it once more and write its guide.")
+    return 0
+
+
 def batch_cmd(limit: int | None = None, max_orders: int | None = None) -> int:
     """The Friday batch: refresh PROSPERO, then run every order that needs a run."""
     from . import db
@@ -544,18 +583,21 @@ def batch_cmd(limit: int | None = None, max_orders: int | None = None) -> int:
             run_id = db.start_run(conn, order.id, _git_version())
             print(f"\n== Order {order.id} (run {run_id}); avoiding {len(avoid)} title(s)")
             from .discovery import AwaitingFullTexts
+            from .shortlist import AwaitingChoice
 
-            store = None
+            store = choose_dir = None
             if settings.discovery_mode == "reviews":
-                _, store, llms = _discovery_setup(settings, sources, llms, order.id)
+                folder, store, llms = _discovery_setup(settings, sources, llms, order.id)
+                choose_dir = folder if settings.pick_before_guide else None
             mirror = ProsperoMirror(settings.prospero_db)
             try:
                 try:
                     report = run_request(request, settings=settings, sources=sources,
                                          mirror=mirror, llms=llms, meter=meter, limit=limit,
                                          avoid_titles=tuple(avoid), store=store,
+                                         choose_dir=choose_dir,
                                          progress=lambda m: print(f"  {m}", flush=True))
-                except AwaitingFullTexts as exc:
+                except (AwaitingFullTexts, AwaitingChoice) as exc:
                     # No run row for a paused order: the next batch picks it up
                     # again and the cached replay resumes it.
                     db.discard_run(conn, run_id)
@@ -578,10 +620,14 @@ def batch_cmd(limit: int | None = None, max_orders: int | None = None) -> int:
             finally:
                 mirror.close()
         print(f"\nBatch done: {len(orders) - failures - len(paused)} run(s) saved, "
-              f"{failures} failed, {len(paused)} waiting for full texts. "
+              f"{failures} failed, {len(paused)} waiting for full texts or a pick. "
               "Review them in /admin/guides.")
         for order_id, exc in paused:
-            print(f"  waiting: order {order_id}: {len(exc.missing)} file(s), see {exc.request_path}")
+            if isinstance(exc, AwaitingChoice):
+                print(f"  waiting: order {order_id}: pick a question, see {exc.path}")
+            else:
+                print(f"  waiting: order {order_id}: {len(exc.missing)} file(s), "
+                      f"see {exc.request_path}")
         return 0 if not failures else 1
     finally:
         conn.close()
@@ -715,6 +761,13 @@ def main(argv: list[str] | None = None) -> int:
                   "still missing instead of pausing.")
             return 2
         return run_cmd(rest[0], limit=limit, abstracts_ok=abstracts_ok)
+    if argv and argv[0] == "pick":
+        if len(argv) != 3 or not argv[2].isdigit():
+            print("Usage: python -m guide_pipeline pick <order id> <number>\n"
+                  "  Picks a question from the order's SHORTLIST.md. Run the batch again "
+                  "to write its guide.")
+            return 2
+        return pick_cmd(argv[1], int(argv[2]))
     if argv and argv[0] == "swap":
         rest = argv[1:]
         limit = None

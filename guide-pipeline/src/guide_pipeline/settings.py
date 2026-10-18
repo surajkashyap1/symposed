@@ -132,6 +132,9 @@ class Settings:
     # how candidate questions are found: "reviews" (read neighbouring reviews and
     # mine their gaps, guide v2) or "axes" (the 14 gap axes, the v1 method)
     discovery_mode: str = "reviews"
+    # stop after scoring with a shortlist of the top 3 questions and write the
+    # guide only once a person picks one (`pick` command), Samarth 2026-10-18
+    pick_before_guide: bool = True
     # website database the pipeline reads orders from and writes runs to
     database_url: Optional[str] = None
     # PROSPERO mirror (spec section 3)
@@ -165,6 +168,8 @@ class Settings:
             batch_poll_seconds=_get_float("BATCH_POLL_SECONDS", 30.0),
             fulltext_max_chars=_get_int("FULLTEXT_MAX_CHARS", 60_000),
             discovery_mode=(_get("DISCOVERY_MODE", "reviews") or "reviews").lower(),
+            pick_before_guide=(_get("PICK_BEFORE_GUIDE", "true") or "true").lower()
+            in ("1", "true", "yes", "on"),
             database_url=_get("PIPELINE_DATABASE_URL") or _get("STAGING_DATABASE_URL"),
             prospero_db=Path(_get("PROSPERO_DB", "data/prospero.sqlite") or "data/prospero.sqlite"),
             prospero_max_age_days=_get_int("PROSPERO_MAX_AGE_DAYS", 10),

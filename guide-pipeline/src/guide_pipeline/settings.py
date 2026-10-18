@@ -66,7 +66,10 @@ class Thresholds:
     review_years: int = 10                      # neighbouring reviews: the last N years
     max_fulltexts: int = 6                      # reviews read per topic (each is a download)
     final_check_reviews: int = 3                # reviews read for the final novelty check
-    topic_max_reviews: int = 60                 # a stated topic with more is too broad
+    # Reviews of any kind (narrative included) in the last N years. Narrow
+    # clinical topics often have 100 to 200 (seen live: SGLT2 inhibitors in
+    # transplant recipients, 150), a whole field thousands (SGLT2 inhibitors, 6,365).
+    topic_max_reviews: int = 300                # a topic with more is too broad
     topic_min_primary: int = 30                 # primary studies a topic needs (last N years)
     max_topics: int = 8                         # topics proposed for a vague request
 
@@ -95,7 +98,7 @@ class Thresholds:
             review_years=_get_int("REVIEW_YEARS", 10),
             max_fulltexts=_get_int("MAX_FULLTEXTS", 6),
             final_check_reviews=_get_int("FINAL_CHECK_REVIEWS", 3),
-            topic_max_reviews=_get_int("TOPIC_MAX_REVIEWS", 60),
+            topic_max_reviews=_get_int("TOPIC_MAX_REVIEWS", 300),
             topic_min_primary=_get_int("TOPIC_MIN_PRIMARY", 30),
             max_topics=_get_int("MAX_TOPICS", 8),
         )

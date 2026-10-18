@@ -210,12 +210,19 @@ _DECIDER = (
 )
 
 
+def _clean_name(name: str) -> str:
+    """Drop any bracketed label the model adds, e.g. "(axis: emerging indication)"."""
+    return re.sub(r"\s*\((?:axis|type|note|review)[^)]*\)", "", name, flags=re.I).strip()
+
+
 def propose_topics(llm: LLMClient, *, stated: str, specialties: tuple[str, ...], context: str,
                    n: int, avoid: tuple[str, ...] = ()) -> tuple[str, list[TopicOption]]:
     where = ", ".join(specialties) or "any clinical specialty"
     ask = (
         f'The user stated this topic: "{stated}". First write a PubMed concept query for it '
-        "exactly as stated (stated_topic_query). Then propose narrower topics inside it."
+        "exactly as stated (stated_topic_query). Then propose narrower topics inside it. "
+        f'Every topic must stay within "{stated}": a narrower population, indication, '
+        "outcome, comparison or setting of it, never a different subject."
         if stated.strip() else
         f"The user left the topic open. Their specialties: {where}. Set stated_topic_query "
         "to an empty string and propose topics inside these specialties."
@@ -228,11 +235,12 @@ def propose_topics(llm: LLMClient, *, stated: str, specialties: tuple[str, ...],
         "condition, population, intervention or test area, not a full research question. "
         "Prefer topics where a small team could plausibly find an open review question. "
         "Give each a PubMed concept query (MeSH terms only where certain, plus title and "
-        "abstract synonyms) and one sentence on why it suits this user."
+        "abstract synonyms) and one sentence on why it suits this user. The name is the "
+        "topic alone, with no labels, brackets or notes."
         + (f"\n\nDo not propose these again: {'; '.join(avoid)}" if avoid else "")
     )
     data = llm.complete_json(_DECIDER, user, schema=TOPICS_SCHEMA)
-    topics = [TopicOption(str(t["name"]).strip(), str(t["pubmed_query"]).strip(),
+    topics = [TopicOption(_clean_name(str(t["name"])), str(t["pubmed_query"]).strip(),
                           tidy(str(t.get("why", ""))))
               for t in data.get("topics", []) if str(t.get("pubmed_query", "")).strip()]
     return str(data.get("stated_topic_query", "")).strip(), topics[:n]
@@ -259,6 +267,14 @@ def choose_topics(llm: LLMClient, pubmed: PubMedClient, *, stated: str,
         elif t.reviews > th.topic_max_reviews:
             t.usable, t.note = False, f"{t.reviews} reviews: too broad"
     ranked = sorted((t for t in proposed if t.usable), key=lambda t: (t.reviews, -t.primary))
+    if not ranked:
+        # Every narrower topic is busier than the ceiling: still try the least
+        # reviewed ones with enough primary studies (we only ever read the
+        # closest few reviews), rather than giving up on a well studied field.
+        busy = [t for t in proposed if t.primary >= th.topic_min_primary]
+        for t in busy:
+            t.usable, t.note = True, f"{t.reviews} reviews: busy, tried as the least reviewed"
+        ranked = sorted(busy, key=lambda t: (t.reviews, -t.primary))
     out: list[TopicOption] = []
     rejected = [t for t in proposed if not t.usable]
     if stated.strip() and stated_query:

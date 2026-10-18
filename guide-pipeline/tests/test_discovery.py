@@ -315,3 +315,16 @@ def test_internal_review_labels_never_reach_the_user(tmp_path):
     d = run_discover(tmp_path, llm, pm)
     r = d.screen.top.candidate.rationale
     assert "R1" not in r and "[R2]" not in r and r.startswith("A review (PMID ")
+
+
+def test_topic_labels_are_stripped_and_a_busy_field_still_gets_tried():
+    llm = SchemaLLM(topics=[topics_reply("sglt2_q", [
+        ("SGLT2 inhibitors in transplant recipients (axis: underrepresented population)", "tx_q"),
+        ("Rare use", "rare_q")])])
+    pm = FakePubMed(reviews={"sglt2_q": 6365, "tx_q": 400, "rare_q": 2},
+                    primary={"sglt2_q": 11535, "tx_q": 218, "rare_q": 5})
+    topics = choose_topics(llm, pm, stated="SGLT2 inhibitors", prefs=PREFS, th=TH, today=TODAY)
+    usable = [t for t in topics if t.usable]
+    assert [t.name for t in usable] == ["SGLT2 inhibitors in transplant recipients"]
+    assert "busy" in usable[0].note
+    assert 'must stay within "SGLT2 inhibitors"' in llm.calls[0][1]

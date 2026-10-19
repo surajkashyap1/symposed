@@ -270,8 +270,12 @@ def _reviews_mode(tmp_path, monkeypatch, screen_result, checks, choose_dir=None)
 
     from guide_pipeline.discovery import Discovery, FinalCheck
 
-    monkeypatch.setattr(run_mod, "discover",
-                        lambda **kw: Discovery(topics=[], trials=[], screen=screen_result))
+    def fake_discover(**kw):
+        if kw.get("judge"):  # pick mode: the judge sees the passing questions
+            kw["judge"]([a for a in screen_result.assessments if a.verdict.passed])
+        return Discovery(topics=[], trials=[], screen=screen_result)
+
+    monkeypatch.setattr(run_mod, "discover", fake_discover)
     seen = []
 
     def fake_check(**kw):
@@ -281,10 +285,15 @@ def _reviews_mode(tmp_path, monkeypatch, screen_result, checks, choose_dir=None)
         return FinalCheck(title, [], [], ok, True, True, {}, "" if ok else "narrow it")
 
     monkeypatch.setattr(run_mod, "final_check", fake_check)
-    # novelty: everything passes unless the test names titles to drop
+    # novelty: everything is novel unless the test names titles that are not
     drop = checks.get("__not_novel__", set())
-    monkeypatch.setattr(run_mod.novelty, "screen", lambda scored, **kw: (
-        [x for x in scored if x.assessment.candidate.title not in drop][:kw["want"]], []))
+
+    def fake_novelty(llm, pubmed, a, **kw):
+        from guide_pipeline.novelty import NoveltyCheck
+        t = a.candidate.title
+        return NoveltyCheck(t, "not novel" if t in drop else "novel", "view", "", "", "", "")
+
+    monkeypatch.setattr(run_mod.novelty, "check", fake_novelty)
     settings = _replace(settings_for(tmp_path), discovery_mode="reviews")
     meter = UsageMeter()
     llms = {t: object() for t in ("criteria_writing", "attribute_extraction", "screening",
@@ -380,12 +389,23 @@ def test_questions_that_fail_novelty_never_reach_the_shortlist(tmp_path, monkeyp
     assert "Second" not in [o.title for o in exc.value.options]
 
 
-def test_pick_mode_needs_contact_when_nothing_is_novel(tmp_path, monkeypatch, stubbed):
-    report, _ = _reviews_mode(tmp_path, monkeypatch, _three(),
-                              {"__not_novel__": {"First", "Second", "Third"}},
-                              choose_dir=tmp_path / "pick")
-    assert report.outcome == "needs_contact"
-    assert "novelty" in report.screen.contact_reason
+def test_when_nothing_is_novel_every_question_is_listed_for_manual_approval(
+        tmp_path, monkeypatch, stubbed):
+    from guide_pipeline import shortlist
+
+    folder = tmp_path / "pick"
+    with pytest.raises(shortlist.AwaitingChoice) as exc:
+        _reviews_mode(tmp_path, monkeypatch, _three(),
+                      {"__not_novel__": {"First", "Second", "Third"}}, choose_dir=folder)
+    assert exc.value.options == [] and "No question was rated clearly new" in exc.value.note
+    text = (folder / "SHORTLIST.md").read_text()
+    assert "# Every question considered" in text
+    assert text.count("### Option ") == 3 and "Not new" in text
+    shortlist.write_choice(folder, 3)  # any listed question can still be approved
+    report, seen = _reviews_mode(tmp_path, monkeypatch, _three(),
+                                 {"__not_novel__": {"First", "Second", "Third"}, "Third": True,
+                                  "First": True, "Second": True}, choose_dir=folder)
+    assert len(seen) == 1 and report.title == seen[0] and report.outcome == FOUND
 
 
 def test_pick_mode_needs_contact_when_every_option_fails(tmp_path, monkeypatch, stubbed):

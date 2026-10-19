@@ -401,6 +401,31 @@ def test_a_short_shortlist_is_topped_up_from_the_next_topic_without_new_reviews(
     assert "Passes" in titles and len(titles) == 7  # all pass in this fake
 
 
+def test_with_a_judge_the_next_topic_is_read_until_something_is_clearly_new(tmp_path):
+    llm = SchemaLLM(topics=[topics_reply("af_q", [("Topic B", "b_q"), ("Topic C", "c_q")])],
+                    reading=[READ],
+                    gaps=[gap(titles=("From A",)), gap(titles=("From B",)), gap(titles=("From C",))])
+    for g, q in zip(llm.replies["gaps"], ("af_q a", "b_q b", "c_q c")):
+        g["candidates"][0]["pubmed_query"] = q
+    pm = FakePubMed(reviews={"af_q": 3, "b_q": 4, "c_q": 5},
+                    primary={"af_q": 900, "b_q": 900, "c_q": 900})
+    seen = []
+
+    def judge(new):
+        seen.append([a.candidate.title for a in new])
+        return any(a.candidate.title == "From B" for a in new)
+
+    store = FullTextStore(tmp_path / "ft", FakeEPMC(oa={f"{abs(hash(k)) % 1000:03d}{i}"
+                                                        for k in pm.reviews for i in range(9)}))
+    d = discover(llms=llms(llm), pubmed=pm, clinicaltrials=FakeTrials(),
+                 mirror=make_mirror(tmp_path), store=store, stated_topic="Atrial fibrillation",
+                 prefs=PREFS, th=TH, today=TODAY, judge=judge)
+    assert seen == [["From A"], ["From B"]]  # topic C never read
+    assert [t.topic.name for t in d.trials][1] == "Topic B"
+    assert all(t.route != "axes (top up)" for t in d.trials)  # reviews read, not axes only
+    assert len(d.trials[1].readings) == 3
+
+
 def test_internal_review_labels_never_reach_the_user(tmp_path):
     reply = gap()
     reply["candidates"][0]["rationale"] = ("R1 left older adults out, and [R2] agrees. "

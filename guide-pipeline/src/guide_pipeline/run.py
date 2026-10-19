@@ -257,6 +257,7 @@ def run_request(
         openalex=getattr(sources, "openalex", None)))
 
     discovery: Optional[Discovery] = None
+    checks_made: list[novelty.NoveltyCheck] = []
     if forced is not None:
         say(f"Swap: re-checking {forced.title!r} before writing its guide")
         a = timed("candidates", lambda: assess_candidate(
@@ -271,11 +272,13 @@ def run_request(
                               + "; ".join(a.verdict.reasons))
     elif settings.discovery_mode == "reviews" and store is not None:
         say("Finding topics and the closest existing reviews...")
+        judge = (_novelty_judge(llms["novelty_check"], sources.pubmed, th, prefs, checks_made,
+                                say) if choose_dir is not None else None)
         discovery = timed("candidates", lambda: discover(
             llms=llms, pubmed=sources.pubmed, clinicaltrials=sources.clinicaltrials,
             mirror=mirror, store=store, stated_topic=request.topic, prefs=prefs, th=th,
             landscape=landscape, mirror_max_age_days=settings.prospero_max_age_days,
-            avoid_titles=tuple(avoid_titles), say=say))
+            avoid_titles=tuple(avoid_titles), say=say, judge=judge))
         screen = discovery.screen
     else:
         say("Generating and gating candidate questions...")
@@ -288,6 +291,7 @@ def run_request(
     label = request.order_id or "request"
     report = RunReport(request, screen.outcome, None, screen, landscape=landscape,
                        seconds=seconds, discovery=discovery)
+    report.novelty_checks = checks_made
 
     if screen.outcome == NEEDS_CONTACT or screen.top is None:
         say(f"Nothing fits the stated requirements: {screen.contact_reason}")
@@ -319,46 +323,50 @@ def run_request(
     tied = tied_leaders(initial, margin=th.score_margin, max_tied=th.max_tied)
     picked_alternatives: Optional[list[alt_mod.Alternative]] = None
     if discovery is not None and forced is None and choose_dir is not None:
-        # Every question is judged for novelty the way a journal editor would, best
-        # score first, until three pass. Then a person picks before anything else
-        # is spent.
-        say("Checking each question for novelty against the closest papers...")
-        top_scored, checks = timed("novelty", lambda: novelty.screen(
-            initial, llm=llms["novelty_check"], pubmed=sources.pubmed, th=th,
-            publication_type=report.publication_type, context=prefs.context,
-            want=shortlist.SIZE, say=say))
-        report.novelty_checks = checks
-        if not top_scored:
-            reason = "no question passed the novelty check: " + "; ".join(
-                f"{c.title}: {c.verdict}, {c.editor_view}" for c in checks)
-            say(reason)
-            report.outcome = NEEDS_CONTACT
-            report.screen = replace(screen, outcome=NEEDS_CONTACT, contact_reason=reason)
-            report.workspace = create_workspace(f"{label} needs contact", base=settings.output_dir)
-            _finish(report, meter, settings, extra={
-                "contact_reason": reason, "discovery": discovery.as_dict(),
-                "novelty_checks": [c.as_dict() for c in checks]})
-            return report
-        say(f"Writing up the top {len(top_scored)} questions to pick from...")
-        opts = timed("shortlist", lambda: shortlist.options(
-            top_scored, criteria_llm=llms["criteria_writing"],
-            brief_llm=llms["shortlist_brief"], publication_type=report.publication_type,
-            review_years=th.review_years, team=prefs.collaborators))
-        by_title = {c.title: c for c in checks}
-        for o in opts:
-            o.novelty = by_title[o.title].as_dict() if o.title in by_title else {}
+        # Questions were judged for novelty during discovery (the judge). Clearly
+        # new ones are offered first, then uncertain ones, best score first. Every
+        # other question considered is listed too, for a person to approve any of
+        # them (Samarth, 2026-10-19). Nothing else is spent until one is picked.
+        by_title = {c.title: c for c in report.novelty_checks}
+
+        def rated(verdict: str) -> list:
+            return [x for x in initial if (c := by_title.get(x.assessment.candidate.title))
+                    and c.verdict == verdict]
+
+        top_scored = (rated(novelty.NOVEL) + rated(novelty.UNCERTAIN))[:shortlist.SIZE]
+        pickable = top_scored + [x for x in initial if x not in top_scored]
+        opts: list[alt_mod.Alternative] = []
+        if top_scored:
+            say(f"Writing up the top {len(top_scored)} questions to pick from...")
+            opts = timed("shortlist", lambda: shortlist.options(
+                top_scored, criteria_llm=llms["criteria_writing"],
+                brief_llm=llms["shortlist_brief"], publication_type=report.publication_type,
+                review_years=th.review_years, team=prefs.collaborators))
+            for o in opts:
+                o.novelty = by_title[o.title].as_dict() if o.title in by_title else {}
+        numbers = {x.assessment.candidate.title: i for i, x in enumerate(pickable, 1)}
+        offered = {o.title for o in opts}
+        others = [shortlist.considered(a, number=numbers.get(a.candidate.title),
+                                       topic=_topic_of(discovery, a),
+                                       novelty=by_title.get(a.candidate.title))
+                  for a in screen.assessments if a.candidate.title not in offered]
         topic = request.topic or request.search_topic
         failed = shortlist.failed_checks(choose_dir)
 
         def ask(note: str = "") -> shortlist.AwaitingChoice:
+            if not opts:
+                note = (note + " " if note else "") + (
+                    "No question was rated clearly new. Every question considered is "
+                    "listed below: approve one only after checking its closest papers.")
             path = shortlist.write(choose_dir, opts, topic=topic, key=choose_dir.name,
-                                   failed=failed, note=note)
+                                   failed=failed, note=note, others=others)
             return shortlist.AwaitingChoice(choose_dir, path, opts, note)
 
         n = shortlist.read_choice(choose_dir)
-        if n is None or not 1 <= n <= len(opts) or opts[n - 1].title in failed:
+        if (n is None or not 1 <= n <= len(pickable)
+                or pickable[n - 1].assessment.candidate.title in failed):
             raise ask()
-        chosen = top_scored[n - 1]
+        chosen = pickable[n - 1]
         say(f"Final check on option {n}: {chosen.assessment.candidate.title}")
         check = timed("final_check", lambda: final_check(
             llms=llms, pubmed=sources.pubmed, store=store, assessment=chosen.assessment,
@@ -369,9 +377,9 @@ def run_request(
                 f"{k}: {v}" for k, v in check.reasons.items())
             shortlist.record_failed(choose_dir, check.title, tidy(reason))
             failed = shortlist.failed_checks(choose_dir)
-            if any(o.title not in failed for o in opts):
+            if any(x.assessment.candidate.title not in failed for x in pickable):
                 raise ask(f"Option {n} failed the final check. Please pick another.")
-            reason = "every shortlisted question failed the final check: " + "; ".join(
+            reason = "every question failed the final check: " + "; ".join(
                 f"{t}: {r}" for t, r in failed.items())
             say(reason)
             report.outcome = NEEDS_CONTACT
@@ -382,7 +390,7 @@ def run_request(
                 "final_checks": [c.as_dict() for c in report.final_checks]})
             return report
         tied = [chosen]
-        picked_alternatives = shortlist.alternatives_after(opts, n, failed=set(failed))
+        picked_alternatives = shortlist.alternatives_after(opts, n, failed=set(failed))[:2]
     elif discovery is not None and forced is None:
         # Final check, best score first: read the reviews closest to the title and
         # ask whether it is new, publishable and realistic. The first to pass goes on.
@@ -542,6 +550,32 @@ def run_request(
         **screening.as_dict(),
     })
     return report
+
+
+def _novelty_judge(llm: Any, pubmed: Any, th: Any, prefs: Any, made: list,
+                   say: Callable[[str], None]) -> Callable[[list], bool]:
+    """Checks each topic's new passing questions; True once one is clearly new."""
+    def judge(new: list) -> bool:
+        for a in new[:th.novelty_per_topic]:
+            if len(made) >= th.novelty_max_checks:
+                break
+            say(f"  novelty check: {a.candidate.title}")
+            nc = novelty.check(llm, pubmed, a, th=th, publication_type=prefs.publication_type,
+                               context=prefs.context)
+            made.append(nc)
+            say(f"    {nc.verdict}" + (f": {nc.editor_view[:160]}" if nc.editor_view else ""))
+        if any(c.verdict == novelty.NOVEL for c in made):
+            return True
+        if len(made) >= th.novelty_max_checks:
+            say(f"  novelty check limit reached ({th.novelty_max_checks}): stopping here")
+            return True
+        return False
+    return judge
+
+
+def _topic_of(discovery: Discovery, a: Any) -> str:
+    i = getattr(a, "batch", 0) - 1
+    return discovery.trials[i].topic.name if 0 <= i < len(discovery.trials) else ""
 
 
 def fill_missing_dois(crossref: Any, screening: ScreeningResult, *, limit: int = 40) -> int:

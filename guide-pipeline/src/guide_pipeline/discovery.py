@@ -628,8 +628,16 @@ def discover(
     avoid_titles: tuple[str, ...] = (),
     today: Optional[date] = None,
     say: Callable[[str], None] = lambda _m: None,
+    judge: Optional[Callable[[list[CandidateAssessment]], bool]] = None,
 ) -> Discovery:
-    """Topics -> neighbouring reviews -> gaps -> gated candidates (ScreenResult)."""
+    """Topics -> neighbouring reviews -> gaps -> gated candidates (ScreenResult).
+
+    Without `judge`, the first topic that gives a passing question ends the
+    search. With it (Samarth, 2026-10-19), each topic's newly passing questions
+    are handed to `judge`, which checks their novelty and says whether the search
+    can stop: until it does, the next topic's reviews are read (pausing for full
+    texts as needed). The axes only top up from other topics is not used then.
+    """
     today = today or datetime.now(timezone.utc).date()
     mirror.ensure_fresh(max_age_days=mirror_max_age_days, today=today)
     since = today.year - th.review_years + 1
@@ -659,6 +667,18 @@ def discover(
     def passing() -> int:
         return sum(a.verdict.passed for a in assessments)
 
+    judged: set[str] = set()
+
+    def done() -> bool:
+        if judge is None:
+            return passing() > 0
+        new = [a for a in assessments if a.verdict.passed and a.candidate.title not in judged]
+        judged.update(a.candidate.title for a in new)
+        if judge(new):
+            return True
+        say("  no clearly new question yet: next topic")
+        return False
+
     last = 0
     for i, topic in enumerate(usable, 1):
         last = i
@@ -678,7 +698,7 @@ def discover(
                 min_n=th.candidate_titles_min, max_n=th.candidate_titles_max,
                 min_axes=th.candidate_min_axes, max_per_axis=th.candidate_max_per_axis,
                 avoid=tried(), preferences=prefs, batch=i), i)
-            if any(a.verdict.passed for a in batch):
+            if done():
                 break
             continue
         store.require(refs, stage=f"reading the reviews on '{topic.name}'")
@@ -695,18 +715,16 @@ def discover(
         trial.route = "gaps"
         batch = gate(gaps.candidates, i)
         passed = sum(a.verdict.passed for a in batch)
-        if passed >= SHORTLIST:
-            break
         # Too few new enough as worded (the guide needs a main question and two
         # alternatives): use the axes as a lens on the same gaps. No new reviews.
         rejected = [a for a in batch if not a.verdict.passed]
-        if rejected:
+        if passed < SHORTLIST and rejected:
             say(f"  {passed} gap question(s) passed: reworking the rest through the axes")
             trial.route = "gaps+axes"
             lens = axis_lens(llms["axis_lens"], rejected=rejected, readings=trial.readings,
                              prefs=prefs, avoid=tried())
             passed += sum(a.verdict.passed for a in gate(lens, i))
-        if 0 < passed < SHORTLIST:
+        if passed < SHORTLIST and passed > 0:
             # Still short of two alternatives: one batch from the axes on the same
             # narrow topic, informed by the gaps (no new reviews to fetch).
             say(f"  {passed} passing: topping up the shortlist from the axes")
@@ -720,13 +738,13 @@ def discover(
                 gate(extra, i)
             except LLMError as exc:
                 say(f"  top up failed: {exc}")
-        if passing():
+        if done():
             break
 
     # A crowded topic can leave fewer than three to pick from. Top up from the next
     # topics through the axes only: no reviews to fetch now, and the closest reviews
     # are still read in the final check if one of these is picked.
-    for j, topic in enumerate(usable[last:], last + 1):
+    for j, topic in enumerate(usable[last:] if judge is None else [], last + 1):
         if not 0 < passing() < SHORTLIST or j > last + 2:
             break
         say(f"  {passing()} passing: topping up from the next topic, {topic.name} "

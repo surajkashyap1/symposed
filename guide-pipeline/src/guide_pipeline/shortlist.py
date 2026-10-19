@@ -110,8 +110,54 @@ def alternatives_after(opts: list[Alternative], chosen: int, *, failed: set[str]
     return [replace(o, number=i) for i, o in enumerate(rest, 1)]
 
 
+def considered(a: Any, *, number: Optional[int], topic: str, novelty: Any = None) -> dict:
+    """One question from the search, for the full list a person approves from."""
+    c, v = a.candidate, a.verdict
+    return {"number": number, "title": c.title, "topic": topic, "axis": c.axis,
+            "rationale": tidy(c.rationale), "passed_gates": v.passed,
+            "gate_reasons": [tidy(r) for r in v.reasons if r],
+            "eligible": a.counts.eligible_studies, "records": a.counts.records_to_screen,
+            "novelty": novelty.as_dict() if novelty is not None else {}}
+
+
+def _considered_md(others: list[dict]) -> list[str]:
+    if not others:
+        return []
+    lines = ["", "# Every question considered", "",
+             "All the questions the search produced, by topic, whatever their rating. Any "
+             "numbered one can be picked with the same command. Questions without a number "
+             "did not pass the basic checks (too few studies, already reviewed or registered) "
+             "and cannot be written up as they stand.", ""]
+    by_topic: dict[str, list[dict]] = {}
+    for o in others:
+        by_topic.setdefault(o["topic"] or "Other", []).append(o)
+    for name, items in by_topic.items():
+        lines += [f"## Topic: {name}", ""]
+        for o in sorted(items, key=lambda x: (x["number"] is None, x["number"] or 0)):
+            head = (f"### Option {o['number']}: {o['title']}" if o["number"]
+                    else f"### (not pickable) {o['title']}")
+            lines += [head, ""]
+            nv = o.get("novelty") or {}
+            if nv:
+                lines += [f"**Novelty check: {VERDICT_LABEL.get(nv['verdict'], nv['verdict'])}.** "
+                          f"{nv.get('editor_view', '')}", ""]
+                closest = next((e for e in nv.get("papers", [])
+                                if e["pmid"] == nv.get("closest_pmid")), None)
+                if closest:
+                    lines += [f"Closest paper: [{closest['title']}](https://pubmed.ncbi.nlm.nih.gov/"
+                              f"{closest['pmid']}/) ({closest['journal']}, {closest.get('year') or ''})", ""]
+            elif o["passed_gates"]:
+                lines += ["**Novelty check:** not run (the limit per topic was reached).", ""]
+            if not o["passed_gates"]:
+                lines += [f"**Did not pass the basic checks:** {' '.join(o['gate_reasons'])}", ""]
+            lines += [f"**Why it was proposed.** {o['rationale']}", "",
+                      f"About {o['eligible']} studies likely to fit, from {o['records']} search "
+                      "results.", ""]
+    return lines
+
+
 def write(folder: Path, opts: list[Alternative], *, topic: str, key: str,
-          failed: dict[str, str], note: str = "") -> Path:
+          failed: dict[str, str], note: str = "", others: list[dict] = ()) -> Path:
     """SHORTLIST.md (to read or paste) and shortlist.docx (to send)."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
@@ -133,9 +179,13 @@ def write(folder: Path, opts: list[Alternative], *, topic: str, key: str,
         lines += _novelty_md(o.novelty)
         lines += ["**Scope**", ""] + [f"- {k}: {v}" for k, v in o.scope] + [""]
         lines += [f"Best search ({o.search_count} results in PubMed): `{o.search_query}`", ""]
+    others = [{**o, "rationale": f"Failed the final check: {failed[o['title']]} {o['rationale']}"}
+              if o["title"] in failed else o for o in others]
+    lines += _considered_md(others)
     path = folder / SHORTLIST_MD
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    _write_docx(folder / SHORTLIST_DOCX, opts, topic=topic, failed=failed, note=note)
+    _write_docx(folder / SHORTLIST_DOCX, opts, topic=topic, failed=failed, note=note,
+                others=others)
     return path
 
 
@@ -175,7 +225,7 @@ def _novelty_md(novelty: dict) -> list[str]:
 
 
 def _write_docx(path: Path, opts: list[Alternative], *, topic: str, failed: dict[str, str],
-                note: str) -> None:
+                note: str, others: list[dict] = ()) -> None:
     from docx import Document
 
     doc = Document()
@@ -229,4 +279,28 @@ def _write_docx(path: Path, opts: list[Alternative], *, topic: str, failed: dict
             for k, v in rows:
                 cells = table.add_row().cells
                 cells[0].text, cells[1].text = k, v
+    if others:
+        doc.add_heading("Every question considered", 1)
+        doc.add_paragraph("All the questions the search produced, by topic, whatever their "
+                          "rating. Reply with the number of any numbered one to approve it. "
+                          "Unnumbered ones did not pass the basic checks.")
+        topic_now = None
+        for o in sorted(others, key=lambda x: (x["topic"], x["number"] is None, x["number"] or 0)):
+            if o["topic"] != topic_now:
+                topic_now = o["topic"]
+                doc.add_heading(f"Topic: {topic_now or 'Other'}", 2)
+            label = f"Option {o['number']}: " if o["number"] else "(not pickable) "
+            doc.add_heading(label + o["title"], 3)
+            nv = o.get("novelty") or {}
+            if nv:
+                q = doc.add_paragraph()
+                q.add_run(f"Novelty check: {VERDICT_LABEL.get(nv['verdict'], nv['verdict'])}. ").bold = True
+                q.add_run(nv.get("editor_view", ""))
+            if not o["passed_gates"]:
+                q = doc.add_paragraph()
+                q.add_run("Did not pass the basic checks: ").bold = True
+                q.add_run(" ".join(o["gate_reasons"]))
+            q = doc.add_paragraph()
+            q.add_run("Why it was proposed. ").bold = True
+            q.add_run(o["rationale"])
     doc.save(str(path))

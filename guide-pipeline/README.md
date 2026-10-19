@@ -151,7 +151,12 @@ v1 above was the cut-down slice. We are now aligning it with the full
   judges as an editor would: novel, not novel, dead (new but unlikely to give a
   useful answer) or uncertain. Only novel and uncertain questions are shown,
   each with its closest papers listed for a person to verify; the next best
-  question is checked until three pass (`NOVELTY_MAX_CHECKS`).
+  question is checked until three pass (`NOVELTY_MAX_CHECKS`). In pick mode the
+  check runs during discovery (Samarth 2026-10-19): if no question from a topic
+  is rated clearly new (uncertain is not enough), the next topic's reviews are
+  read in full, until one is (`NOVELTY_PER_TOPIC`, `NOVELTY_MAX_CHECKS`). The
+  shortlist then ends with every question considered, by topic, with its
+  rationale and rating, and any that passed the gates can be picked.
 
 ## Supplying full texts
 

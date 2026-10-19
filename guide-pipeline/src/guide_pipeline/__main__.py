@@ -539,7 +539,7 @@ def pick_cmd(key: str, number: int) -> int:
         return 1
     text = shortlist.read_text(encoding="utf-8")
     heading = next((line for line in text.splitlines()
-                    if line.startswith(f"## Option {number}: ")), None)
+                    if line.lstrip("#").strip().startswith(f"Option {number}: ")), None)
     if heading is None:
         print(f"There is no option {number} in {shortlist}.")
         return 1

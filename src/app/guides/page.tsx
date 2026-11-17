@@ -56,48 +56,30 @@ function ReviewStars({ value }: { value: number }) {
   );
 }
 
-// Amendment §2 price block. The free line and the standard line appear
-// together at all times so the value of the free allocation is visible; the
-// middle (£25) tier line shows only while it is the operative band or the
-// next one up. When the free count reaches zero the free line is removed
-// rather than left showing zero.
+// Amendment §2 price block, without the free band (ended 2026-11-17). The
+// intro tier line shows only while intro places remain; then the standard
+// price is the only line.
 function PriceBlock({ pricing }: { pricing: PricingState }) {
-  const hasMiddle =
+  const hasIntro =
     pricing.introQuantity > 0 &&
     pricing.introPricePence > 0 &&
-    pricing.introPricePence < pricing.standardPricePence;
-  const freeLeft = pricing.freeRemainingPublic;
-  const introLeft = pricing.introRemainingPublic;
+    pricing.introPricePence < pricing.standardPricePence &&
+    pricing.introRemainingPublic > 0;
 
   return (
     <div className="flex flex-col gap-1 text-sm">
-      {freeLeft > 0 && (
+      {hasIntro && (
         <p>
           <span className="font-semibold text-foreground">
-            The first {pricing.freeQuantity} guides are free.
+            Introductory price: {formatPounds(pricing.introPricePence)} per guide.
           </span>{" "}
           <span className="font-medium text-primary">
-            {freeLeft} of {pricing.freeQuantity} remaining.
+            {pricing.introRemainingPublic} of {pricing.introQuantity} remaining.
           </span>
         </p>
       )}
-      {hasMiddle && introLeft > 0 && (
-        <p className="text-muted-foreground">
-          The next {pricing.introQuantity} guides are{" "}
-          {formatPounds(pricing.introPricePence)} each
-          {freeLeft === 0 && (
-            <>
-              {" "}
-              <span className="font-medium text-primary">
-                ({introLeft} of {pricing.introQuantity} remaining)
-              </span>
-            </>
-          )}
-          .
-        </p>
-      )}
-      <p className={freeLeft > 0 || introLeft > 0 ? "text-muted-foreground" : "font-semibold text-foreground"}>
-        {freeLeft > 0 || (hasMiddle && introLeft > 0)
+      <p className={hasIntro ? "text-muted-foreground" : "font-semibold text-foreground"}>
+        {hasIntro
           ? `After that, guides are ${formatPounds(pricing.standardPricePence)} each.`
           : `Guides are ${formatPounds(pricing.standardPricePence)} each, the total price, nothing added at checkout.`}
       </p>
@@ -127,9 +109,12 @@ export default async function GuidesPage() {
         <div className="mt-6 inline-flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border bg-secondary/50 px-4 py-3">
           <PriceBlock pricing={pricing} />
         </div>
-        <div className="mt-6">
+        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2">
           <Link href="/guides/request" className={buttonVariants({ size: "lg" })}>
             Start your guide
+          </Link>
+          <Link href="/open-guides" className="text-sm font-medium text-primary hover:underline">
+            Or browse ready-made open project guides
           </Link>
         </div>
       </section>

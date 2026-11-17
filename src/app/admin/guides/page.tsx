@@ -277,10 +277,9 @@ export default async function AdminGuidesPage({
       {/* Pricing config */}
       <h2 className="mt-10 text-lg font-semibold tracking-tight">Pricing</h2>
       <p className="mt-1 text-xs text-muted-foreground">
-        A three-band ladder: the first free quantity of guides are free, the
-        next intro quantity are the intro tier price, then the standard price.
-        While payments are off, checkout is skipped and every request goes
-        straight to the queue at no charge.
+        Every guide is charged. The first intro quantity of charged guides are
+        the intro tier price, then the standard price. Guides given free before
+        charging began do not use up intro places.
       </p>
       {config && (
         <form
@@ -288,28 +287,18 @@ export default async function AdminGuidesPage({
           className="mt-3 grid gap-3 rounded-lg border bg-card p-4 sm:grid-cols-2"
         >
           <div className="grid gap-1.5">
-            <Label htmlFor="freeQuantity">Free quantity (band 1)</Label>
-            <Input
-              id="freeQuantity"
-              name="freeQuantity"
-              type="number"
-              min="0"
-              defaultValue={String(config.freeQuantity)}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <Label htmlFor="introPounds">Intro tier price (£, band 2)</Label>
+            <Label htmlFor="introPounds">Intro tier price (£)</Label>
             <Input
               id="introPounds"
               name="introPounds"
               type="number"
               step="0.01"
-              min="0"
+              min="1"
               defaultValue={(config.introPricePence / 100).toString()}
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="introQuantity">Intro tier quantity (band 2)</Label>
+            <Label htmlFor="introQuantity">Intro tier quantity</Label>
             <Input
               id="introQuantity"
               name="introQuantity"
@@ -319,7 +308,7 @@ export default async function AdminGuidesPage({
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="standardPounds">Standard price (£, band 3)</Label>
+            <Label htmlFor="standardPounds">Standard price (£)</Label>
             <Input
               id="standardPounds"
               name="standardPounds"
@@ -347,10 +336,10 @@ export default async function AdminGuidesPage({
               className="h-4 w-4 rounded border-input accent-primary"
             />
             <span>
-              <span className="font-medium">Payments enabled.</span>{" "}
+              <span className="font-medium">Guide sales open.</span>{" "}
               <span className="text-muted-foreground">
-                When off, the Stripe checkout is skipped and requests are queued
-                free of charge, whatever the ladder says.
+                When off, checkout is paused: buyers can save their answers but
+                cannot order, and nothing is queued or charged.
               </span>
             </span>
           </label>

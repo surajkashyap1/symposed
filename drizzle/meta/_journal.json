@@ -92,6 +92,13 @@
       "when": 1790605135176,
       "tag": "0012_slimy_blindfold",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794948852132,
+      "tag": "0013_skinny_kingpin",
+      "breakpoints": true
     }
   ]
 }

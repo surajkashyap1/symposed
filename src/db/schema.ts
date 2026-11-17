@@ -416,14 +416,12 @@ export const guideOrderFiles = pgTable("guide_order_files", {
 // Single-row config (id = 1), administrator-editable without a deploy.
 // Prices are pence and are the TOTAL payable — nothing is added at checkout
 // (DMCC drip-pricing ban, spec §7.3).
-// Amendment §2 — a three-band price ladder, all quantities and prices
-// administrator-configurable (nothing hardcoded):
-//   1. the first `free_quantity` guides are free (£0);
-//   2. the next `intro_quantity` guides are `intro_price_pence` (the £25 tier);
-//   3. thereafter, `standard_price_pence` (£45).
-// `payments_enabled` is the launch toggle: while OFF, the checkout step is
-// skipped and every request goes straight to the queue at no charge, even
-// though the full Stripe path is built.
+// Amendment §2 price ladder, administrator-configurable (nothing hardcoded):
+//   1. the first `intro_quantity` charged guides are `intro_price_pence`;
+//   2. thereafter, `standard_price_pence`.
+// The free band ended on 2026-11-17 (Samarth): `free_quantity` is kept for
+// the record but no longer read. `payments_enabled` now means guide sales are
+// open: while OFF, checkout is paused and nothing is queued or given free.
 export const guidePricingConfig = pgTable("guide_pricing_config", {
   id: integer("id").primaryKey().default(1),
   standardPricePence: integer("standard_price_pence").notNull().default(4500),
@@ -771,6 +769,30 @@ export const supportQuestions = pgTable("support_questions", {
   answeredAt: timestamp("answered_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index("support_questions_profile_idx").on(t.profileId, t.createdAt)]);
+
+// ------------------- OPEN PROJECT GUIDES -----------------------------
+
+// Guides already made, offered for sale as they are (Samarth, 2026-11-17).
+// Listings are deliberately generic: the specialty, the review type and a
+// short description, never the research question, so the question stays
+// unpublished until someone buys it. There is no checkout: buyers email
+// symposed.support@gmail.com quoting the reference. Admin-managed only.
+export const openGuideType = pgEnum("open_guide_type", [
+  "systematic_review", "literature_review",
+]);
+
+export const openGuides = pgTable("open_guides", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // Short public reference a buyer quotes in their email, e.g. "OG-7K2M".
+  reference: text("reference").notNull().unique(),
+  specialty: text("specialty").notNull(),
+  reviewType: openGuideType("review_type").notNull(),
+  description: text("description").notNull(),
+  // Off once sold or withdrawn: the listing disappears from the public page.
+  isAvailable: boolean("is_available").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index("open_guides_available_idx").on(t.isAvailable, t.createdAt)]);
 
 // ------------------- CHANNEL ATTRIBUTION (§9) ------------------------
 

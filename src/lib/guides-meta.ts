@@ -16,13 +16,13 @@ export const GUIDE_GRADES = [
   "Other",
 ] as const;
 
-// Amendment §1: only review-type publications are offered. Exactly these four,
-// in this order. Meta-analysis is treated as a systematic review with
-// quantitative synthesis and has no separate option.
+// Amendment §1: only review-type publications are offered. Exactly these
+// three, in this order. Meta-analysis is treated as a systematic review with
+// quantitative synthesis and has no separate option. Narrative reviews are no
+// longer offered (Samarth, 2026-11-17).
 export const PUBLICATION_TYPES = [
   "Systematic review",
   "Literature review",
-  "Narrative review",
   "Not sure, recommend one for me",
 ] as const;
 
@@ -105,7 +105,8 @@ export const HERO_DESCRIPTION =
 export const METHOD_STATEMENT =
   "We have developed and tested our own approach to finding research topics that can be published.";
 
-// Amendment §5 — three "What is included" panels, shown laterally.
+// Amendment §5 — the "What is included" panels, one per review type offered,
+// shown laterally.
 // Systematic review is first and is the default view. Each item is [lead,
 // explanation]: the lead is bold, the explanation normal weight (empty where
 // none is given).
@@ -151,20 +152,6 @@ export const GUIDE_PANELS: readonly GuidePanel[] = [
       ["A structured approach", "to selecting and appraising your sources"],
       ["A full publication structure", "with headings and subheadings"],
       ["Guidance on synthesising findings", "where a meta-analysis is not appropriate"],
-      ["A shortlist of target journals", "with their requirements"],
-      ["A timeline", "mapped to the hours you have available"],
-    ],
-  },
-  {
-    key: "narrative",
-    title: "Narrative review",
-    items: [
-      ["A verified topic and a defensible angle", ""],
-      ["What has already been written on the topic", "and where the space is"],
-      ["A search approach", "for identifying the key literature"],
-      ["A table of suggested papers", "with a suggested use for each"],
-      ["A structure for your argument", "with headings and subheadings"],
-      ["Guidance on maintaining balance", "and avoiding the common criticisms of this format"],
       ["A shortlist of target journals", "with their requirements"],
       ["A timeline", "mapped to the hours you have available"],
     ],
@@ -341,10 +328,4 @@ export function formatPounds(pence: number): string {
   return pence % 100 === 0
     ? `£${pence / 100}`
     : `£${(pence / 100).toFixed(2)}`;
-}
-
-// Launch mode: a price of 0 renders as "Free" and checkout completes without
-// Stripe.
-export function formatPriceLabel(pence: number): string {
-  return pence === 0 ? "Free" : formatPounds(pence);
 }

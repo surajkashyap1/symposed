@@ -10,60 +10,58 @@ export type PricingState = {
   standardPricePence: number;
   introPricePence: number;
   introQuantity: number;
-  freeQuantity: number;
+  // Guide sales are open. While off, checkout is refused: nothing is ever
+  // given away free (Samarth, 2026-11-17: the free allocation has ended).
   paymentsEnabled: boolean;
-  // Public counters: decrement on COMPLETED request only, never on form
-  // submission (amendment §2). `paidCount` is the ladder position.
+  // Public counter: decrements on a COMPLETED, charged request only, never on
+  // form submission (amendment §2). `paidCount` is the ladder position.
   paidCount: number;
-  freeRemainingPublic: number;
   introRemainingPublic: number;
   // The price the NEXT guide would cost given the current ladder position.
   currentPricePence: number;
   blockedCountries: string[];
 };
 
-// The three-band price for the guide at ladder position `paidCount`
-// (0-indexed): free for the first `freeQuantity`, then the intro (£25) tier
-// for the next `introQuantity`, then standard (£45).
+// The price for the guide at ladder position `position` (0-indexed, counting
+// charged guides only): the intro tier for the first `introQuantity`, then
+// standard. The free band ended on 2026-11-17 (Samarth): guides given free
+// before then do not use up intro places, and `free_quantity` is no longer read.
 export function priceForPosition(
   cfg: {
-    freeQuantity: number;
     introQuantity: number;
     introPricePence: number;
     standardPricePence: number;
   },
   position: number
 ): number {
-  if (position < cfg.freeQuantity) return 0;
-  if (position < cfg.freeQuantity + cfg.introQuantity) return cfg.introPricePence;
+  if (position < cfg.introQuantity) return cfg.introPricePence;
   return cfg.standardPricePence;
 }
+
+// A guide that was given free (before charging began) holds no ladder place.
+const CHARGED = sql`coalesce(${guideOrders.pricePaidPence}, ${guideOrders.priceAtCheckoutPence}, 1) > 0`;
 
 export async function getPricingState(): Promise<PricingState> {
   const [cfg] = await db.select().from(guidePricingConfig).limit(1);
   if (!cfg) throw new Error("guide_pricing_config row missing, run drizzle/manual/0006_guides_seed.sql");
 
   // A guide "consumes" a ladder slot once its request is completed (paid
-  // family). Free guides count too: they consume the free allocation.
+  // family) and it was charged for.
   const [{ paidCount }] = await db
     .select({ paidCount: sql<number>`count(*)::int` })
     .from(guideOrders)
-    .where(sql`${guideOrders.status} in ('paid', 'in_progress', 'delivered')`);
+    .where(
+      and(sql`${guideOrders.status} in ('paid', 'in_progress', 'delivered')`, CHARGED)
+    );
 
-  const freeRemainingPublic = Math.max(0, cfg.freeQuantity - paidCount);
-  const introRemainingPublic = Math.max(
-    0,
-    cfg.introQuantity - Math.max(0, paidCount - cfg.freeQuantity)
-  );
+  const introRemainingPublic = Math.max(0, cfg.introQuantity - paidCount);
 
   return {
     standardPricePence: cfg.standardPricePence,
     introPricePence: cfg.introPricePence,
     introQuantity: cfg.introQuantity,
-    freeQuantity: cfg.freeQuantity,
     paymentsEnabled: cfg.paymentsEnabled,
     paidCount,
-    freeRemainingPublic,
     introRemainingPublic,
     currentPricePence: priceForPosition(cfg, paidCount),
     blockedCountries: cfg.blockedCountries,
@@ -86,16 +84,16 @@ export async function reserveCheckoutPrice(orderId: string): Promise<{
       .for("update");
     if (!cfg) throw new Error("pricing config missing");
 
-    // Ladder position = every OTHER order that is holding a slot: paid family
-    // orders (which hold forever) plus started-but-unpaid checkouts whose
-    // Stripe session can still complete. Counts all price bands, since a free
-    // guide also consumes the free allocation.
+    // Ladder position = every OTHER charged order that is holding a slot: paid
+    // family orders (which hold forever) plus started-but-unpaid checkouts
+    // whose Stripe session can still complete.
     const [{ held }] = await tx
       .select({ held: sql<number>`count(*)::int` })
       .from(guideOrders)
       .where(
         and(
           sql`${guideOrders.id} <> ${orderId}`,
+          CHARGED,
           or(
             sql`${guideOrders.status} in ('paid', 'in_progress', 'delivered')`,
             and(
@@ -110,8 +108,8 @@ export async function reserveCheckoutPrice(orderId: string): Promise<{
       );
 
     const amountPence = priceForPosition(cfg, held);
-    // "Discounted" now means any below-standard band (free or intro), used for
-    // the admin badge and the paid-confirmation email.
+    // "Discounted" means the below-standard intro band, used for the admin
+    // badge and the paid-confirmation email.
     const discountApplied = amountPence < cfg.standardPricePence;
 
     await tx

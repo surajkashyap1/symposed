@@ -6,13 +6,15 @@ import { getUnreadNotificationCount } from "@/lib/queries/notifications";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { LogoLockup } from "@/components/logo";
 
-// Four core destinations (spec §6.1): Projects (the board), People
-// (/available), Guides (revenue product), Teaching. Everything else is an
-// icon or lives in the footer to keep the bar breathable.
+// Core destinations (spec §6.1): Projects (the board), People (/available),
+// Guides (revenue product), Open guides (ready-made guides for sale, added
+// 2026-11-17), Teaching. Everything else is an icon or lives in the footer to
+// keep the bar breathable.
 const DESTINATIONS = [
   { href: "/projects", label: "Projects" },
   { href: "/available", label: "People" },
   { href: "/guides", label: "Guides" },
+  { href: "/open-guides", label: "Open guides" },
   { href: "/teach", label: "Teaching" },
 ] as const;
 

@@ -5,13 +5,13 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { GuidePanel } from "@/lib/guides-meta";
 import { cn } from "@/lib/utils";
 
-// Amendment §5 — the three "What is included" panels, shown laterally.
+// Amendment §5 — the "What is included" panels, shown laterally.
 // Systematic review is first and is the default view.
 //
 // Accessibility contract from the spec:
 //  - swipe on touch, visible arrow controls on desktop, dot indicators;
 //  - keyboard navigable with the left and right arrow keys, visible focus;
-//  - ALL three panels present in the DOM and readable by screen readers. We
+//  - ALL panels present in the DOM and readable by screen readers. We
 //    never use display:none to hide the inactive panels — they sit in a
 //    horizontally scrollable, scroll-snapping track, so assistive tech reads
 //    every one and touch users swipe between them natively.

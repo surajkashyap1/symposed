@@ -54,9 +54,9 @@ export async function submitGuideReview(formData: FormData) {
     rating,
     body,
     guideTopic,
-    // Paid buyers are not complimentary; the flag is set by the administrator
-    // only for admin-created reviews (spec §3.5).
-    complimentaryGuide: false,
+    // A guide given free (before charging began, 2026-11-17) must carry the
+    // complimentary badge (DMCC disclosure, spec §3.5). Paid buyers do not.
+    complimentaryGuide: (order.pricePaidPence ?? 0) === 0,
   });
 
   const inbox =

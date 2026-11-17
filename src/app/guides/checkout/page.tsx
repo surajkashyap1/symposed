@@ -6,7 +6,6 @@ import {
   DELIVERY_PROMISE,
   EXACT_REQUIREMENTS_DISCLAIMER,
   formatPounds,
-  formatPriceLabel,
   traderInfo,
 } from "@/lib/guides-meta";
 import { startGuideCheckout } from "@/app/guides/actions";
@@ -64,9 +63,8 @@ export default async function GuideCheckoutPage({
   const trader = traderInfo();
 
   // The price the user is about to be charged (re-resolved server-side at the
-  // moment of payment; a change forces the explicit confirmation below). While
-  // the payments toggle is off, nothing is charged: the request is queued free.
-  const currentPence = pricing.paymentsEnabled ? pricing.currentPricePence : 0;
+  // moment of payment; a change forces the explicit confirmation below).
+  const currentPence = pricing.currentPricePence;
   const displayPence = priceChanged
     ? Number.parseInt(priceChanged, 10) || currentPence
     : currentPence;
@@ -156,15 +154,12 @@ export default async function GuideCheckoutPage({
                 Symposed Publication Guide (bespoke, verified)
               </span>
               <span className="text-xl font-semibold">
-                {formatPriceLabel(displayPence)}
+                {formatPounds(displayPence)}
               </span>
             </p>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              {displayPence === 0
-                ? "Free. No card needed, nothing to pay."
-                : "Total price. No fees or taxes are added at checkout."}
-              {displayPence > 0 &&
-                pricing.introRemainingPublic > 0 &&
+              Total price. No fees or taxes are added at checkout.
+              {pricing.introRemainingPublic > 0 &&
                 displayPence === pricing.introPricePence &&
                 ` ${pricing.introRemainingPublic} of ${pricing.introQuantity} guides remaining at this price; verified again when you confirm.`}
             </p>
@@ -200,22 +195,26 @@ export default async function GuideCheckoutPage({
           </div>
 
           {/* Consents + pay */}
-          <form action={startGuideCheckout}>
-            <input type="hidden" name="orderId" value={order.id} />
-            <input type="hidden" name="shownPence" value={displayPence} />
-            <GuideConsentGate
-              payLabel={
-                displayPence === 0
-                  ? "Confirm my free guide"
-                  : `Pay ${formatPounds(displayPence)} securely with Stripe`
-              }
-            />
-          </form>
-          {displayPence > 0 && (
-            <p className="text-xs text-muted-foreground">
-              Payment is handled by Stripe on their secure checkout page. Your
-              card details never touch Symposed&apos;s servers.
-            </p>
+          {pricing.paymentsEnabled ? (
+            <>
+              <form action={startGuideCheckout}>
+                <input type="hidden" name="orderId" value={order.id} />
+                <input type="hidden" name="shownPence" value={displayPence} />
+                <GuideConsentGate
+                  payLabel={`Pay ${formatPounds(displayPence)} securely with Stripe`}
+                />
+              </form>
+              <p className="text-xs text-muted-foreground">
+                Payment is handled by Stripe on their secure checkout page. Your
+                card details never touch Symposed&apos;s servers.
+              </p>
+            </>
+          ) : (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-950 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+              Guide sales are paused at the moment. Your answers are saved, so
+              please come back soon to complete your order. Nothing has been
+              charged.
+            </div>
           )}
         </CardContent>
       </Card>

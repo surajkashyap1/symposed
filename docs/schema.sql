@@ -699,6 +699,23 @@ create table support_questions (
 );
 create index support_questions_profile_idx on support_questions (profile_id, created_at);
 
+-- Open project guides (2026-11-17): ready-made guides sold as they are.
+-- Public listings show only specialty, review type and a generic description,
+-- never the research question. Buyers email symposed.support@gmail.com.
+create type open_guide_type as enum ('systematic_review', 'literature_review');
+
+create table open_guides (
+  id           uuid primary key default gen_random_uuid(),
+  reference    text not null unique,          -- e.g. OG-7K2M, quoted by buyers
+  specialty    text not null,
+  review_type  open_guide_type not null,
+  description  text not null,
+  is_available boolean not null default true, -- off once sold or withdrawn
+  created_at   timestamptz not null default now(),
+  updated_at   timestamptz not null default now()
+);
+create index open_guides_available_idx on open_guides (is_available, created_at);
+
 -- §9.3 administrator-managed referral codes (lowercase, alphanumeric+hyphens).
 create table referral_codes (
   id         serial primary key,

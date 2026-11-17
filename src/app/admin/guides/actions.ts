@@ -224,7 +224,6 @@ export async function updateGuidePricing(formData: FormData) {
   const standard = Math.round(Number(formData.get("standardPounds")) * 100);
   const intro = Math.round(Number(formData.get("introPounds")) * 100);
   const introQuantity = Number.parseInt(String(formData.get("introQuantity") ?? ""), 10);
-  const freeQuantity = Number.parseInt(String(formData.get("freeQuantity") ?? ""), 10);
   const paymentsEnabled = formData.get("paymentsEnabled") === "on";
   const blocked = String(formData.get("blockedCountries") ?? "")
     .toUpperCase()
@@ -232,16 +231,14 @@ export async function updateGuidePricing(formData: FormData) {
     .map((c) => c.trim())
     .filter((c) => /^[A-Z]{2}$/.test(c));
 
-  // Standard is the top of the ladder and must be positive. The intro (£25)
-  // tier may be zero-priced if the admin wants two free bands.
+  // Both prices must be positive: guides are never free (Samarth, 2026-11-17).
+  // For no intro tier, set its quantity to 0.
   if (!Number.isFinite(standard) || standard <= 0)
     fail("The standard price must be a positive amount in pounds.");
-  if (!Number.isFinite(intro) || intro < 0)
-    fail("The intro price must be 0 or a positive amount in pounds.");
+  if (!Number.isFinite(intro) || intro <= 0)
+    fail("The intro price must be a positive amount in pounds.");
   if (Number.isNaN(introQuantity) || introQuantity < 0)
     fail("The intro tier quantity must be 0 or more.");
-  if (Number.isNaN(freeQuantity) || freeQuantity < 0)
-    fail("The free quantity must be 0 or more.");
 
   await db
     .update(guidePricingConfig)
@@ -249,7 +246,6 @@ export async function updateGuidePricing(formData: FormData) {
       standardPricePence: standard,
       introPricePence: intro,
       introQuantity,
-      freeQuantity,
       paymentsEnabled,
       blockedCountries: blocked,
       updatedAt: new Date(),

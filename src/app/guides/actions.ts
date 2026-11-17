@@ -237,23 +237,26 @@ export async function startGuideCheckout(formData: FormData) {
     })
     .where(eq(guideOrders.id, orderId));
 
+  // Every guide is charged (Samarth, 2026-11-17: the free allocation has
+  // ended). With sales paused, nothing is queued and nothing is charged.
+  const pricing = await getPricingState();
+  if (!pricing.paymentsEnabled)
+    fail(
+      "error=" +
+        encodeURIComponent(
+          "Guide sales are paused at the moment. Nothing has been charged, please try again soon."
+        )
+    );
+
   // Race-safe server-side price resolution.
   const { amountPence } = await reserveCheckoutPrice(orderId);
-  const pricing = await getPricingState();
+  if (amountPence <= 0)
+    fail(
+      "error=" +
+        encodeURIComponent("We could not work out the price. Nothing has been charged, please contact us.")
+    );
 
-  // No payment to take when the payments toggle is off (launch default) OR the
-  // guide is free (amendment §2): skip Stripe and complete the order here so
-  // the request goes straight to the queue. This must run BEFORE the
-  // price-change guard below: with payments off the page always shows £0, so
-  // once the free allocation is used up the ladder price would otherwise
-  // trip `priceChanged` and no request could ever be queued.
-  if (!pricing.paymentsEnabled || amountPence === 0) {
-    await completeFreeOrder(orderId);
-    redirect(`/guides/thanks?order=${orderId}`);
-  }
-
-  // Paid path only: if the price moved while the page was open, confirm before
-  // charging.
+  // If the price moved while the page was open, confirm before charging.
   const shownPence = Number.parseInt(String(formData.get("shownPence") ?? ""), 10);
   if (!Number.isNaN(shownPence) && shownPence !== amountPence)
     fail(`priceChanged=${amountPence}`);
@@ -295,50 +298,4 @@ export async function startGuideCheckout(formData: FormData) {
   }
 
   redirect(sessionUrl!);
-}
-
-// Completes a £0 order: same transition and emails as the Stripe webhook,
-// guarded on submitted -> paid so a double-submit can't run twice.
-async function completeFreeOrder(orderId: string) {
-  const updated = await db
-    .update(guideOrders)
-    .set({
-      status: "paid",
-      paidAt: new Date(),
-      pricePaidPence: 0,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(eq(guideOrders.id, orderId), eq(guideOrders.status, "submitted"))
-    )
-    .returning();
-  if (updated.length === 0) return;
-  const order = updated[0];
-
-  const base = process.env.NEXT_PUBLIC_SITE_URL ?? "";
-  await sendEmail({
-    to: order.email,
-    subject: "Symposed: your guide is confirmed and underway",
-    text: [
-      `Hi ${order.fullName},`,
-      "",
-      "Your Publication Guide is confirmed. Your guide is delivered within 7 working days.",
-      "",
-      `We now research your topic using our own developed and tested approach, verify that your question is genuinely open, and build the guide around it. It will appear in "My guides" (${base}/guides/mine) and we'll email you the moment it's ready.`,
-      "",
-      "While you wait: your guide ends with a project ready to run. You can already post it on Symposed to recruit collaborators:",
-      `${base}/projects/new`,
-    ].join("\n"),
-  });
-
-  const inbox =
-    process.env.CONTACT_INBOX ??
-    (process.env.ADMIN_EMAILS ?? "").split(",")[0]?.trim();
-  if (inbox) {
-    await sendEmail({
-      to: inbox,
-      subject: `Guide order confirmed (free intro): ${order.fullName}`,
-      text: `Order ${order.id} is confirmed at no charge. The 7-working-day delivery clock is running.\n\n${base}/admin/guides`,
-    });
-  }
 }

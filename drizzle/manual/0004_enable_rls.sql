@@ -49,3 +49,4 @@ alter table public.platform_config enable row level security;
 alter table public.support_questions enable row level security;
 alter table public.referral_codes enable row level security;
 alter table public.attribution_visits enable row level security;
+alter table public.open_guides enable row level security;

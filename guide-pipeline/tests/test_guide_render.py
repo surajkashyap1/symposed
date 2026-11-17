@@ -111,7 +111,7 @@ def test_papers_intro_names_the_numbered_search_and_disclaimers_are_red():
     assert "These are the papers we found using <strong>search strategy 1</strong>" in html
     assert html.count('class="box box-warn"') >= 7
     assert "comes from your draft protocol" in html
-    assert "Likely publication type" in html and "likely ineligible" not in html.lower()
+    assert "likely publication type" in html and "likely ineligible" not in html.lower()
     for st in m["steps"]:
         assert f"Step {st['number']} of 9" in html
 
@@ -137,8 +137,13 @@ def test_companions_are_bespoke_and_editable(tmp_path):
     assert sh.max_row == len(m["papers"]) + 1
     headers = [c.value for c in sh[1]]
     for col in ("PMID or ID", "Abstract", "Likely publication type", "Screener 1 decision",
-                "Reason for exclusion"):
+                "Reason for exclusion", "Sample size", "Free to read online?"):
         assert col in headers
+    k = headers.index("Free to read online?") + 1
+    free = [r[0] for r in sh.iter_rows(min_row=2, min_col=k, max_col=k, values_only=True)]
+    assert set(free) <= {"Yes", "Not found free, ask your library"}
+    link = sh.cell(row=2, column=headers.index("Link") + 1)
+    assert link.hyperlink.target == m["papers"][0]["url"]
     lists = wb["Lists"]
     values = [c.value for col in lists.iter_cols() for c in col]
     assert "Further review needed" in values and "Wrong population" in values
@@ -153,15 +158,27 @@ def test_companions_are_bespoke_and_editable(tmp_path):
     assert "prospero" not in lit
 
 
-def test_build_outputs_writes_pack_and_rerenders(tmp_path):
-    pytest.importorskip("weasyprint")
+def test_the_guide_points_to_the_tracker_instead_of_listing_papers():
+    m = sample_model()
+    html = render_html(m)
+    assert f"All {len(m['papers'])} papers are in the <strong>Screening</strong> sheet" in html
+    assert m["papers"][0]["title"] not in html
+
+
+def test_build_outputs_writes_pack_and_rerenders(tmp_path, monkeypatch):
+    # no Word and no browser here: the guide still renders, with the fallbacks
+    monkeypatch.setattr("guide_pipeline.guide_docx._word", lambda *a, **k: None)
+    monkeypatch.setattr("guide_pipeline.guide_docx._rasterise", lambda svgs, out, say: [])
     ws = create_workspace(base=tmp_path, request_id="r")
-    out = build_outputs(ws, sample_model(), screenshots=False, say=lambda _m: None)
-    assert out["pdf"].read_bytes()[:4] == b"%PDF"
+    out = build_outputs(ws, sample_model(), screenshots=False, say=lambda _m: None,
+                        password="", pdf=False)
+    assert out["guide"].name == "guide.docx" and Document(str(out["guide"])).paragraphs
+    assert "pdf" not in out and out["warnings"]
     assert sorted(zipfile.ZipFile(out["pack"]).namelist()) == [
-        "guide.pdf", "prospero_draft.docx", "protocol.docx", "tracker.xlsx"]
+        "guide.docx", "prospero_draft.docx", "protocol.docx", "tracker.xlsx"]
+    monkeypatch.setenv("GUIDE_PDF", "0")
     again = rerender(ws.dir, say=lambda _m: None)
-    assert again["pdf"].exists() and ws.model_path.exists()
+    assert again["guide"].exists() and ws.model_path.exists()
 
 
 def test_long_extracted_values_are_shortened_for_narrow_columns():

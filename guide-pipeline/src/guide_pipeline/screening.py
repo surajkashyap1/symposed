@@ -492,3 +492,85 @@ def screen_papers(
         full_text_screened=sum(1 for s in screened if s.evidence_basis.startswith("full text")),
         counts={st: sum(1 for s in screened if s.status == st) for st in STATUSES},
     )
+
+
+def screen_many(
+    extract_llm: LLMClient,
+    screen_llm: LLMClient,
+    jobs: list[tuple[Criteria, list[Paper]]],
+    *,
+    concurrency: int = 4,
+) -> list[ScreeningResult]:
+    """Screen several reviews' papers, each against its own criteria, by abstract.
+
+    The update pipeline screens the new papers for every review at once (step 5):
+    one batch for attributes and one for screening across all of them, instead of
+    two batches per review. Results come back in the order of `jobs`.
+    """
+    flat = [(j, paper, _abstract_text(paper)) for j, (_, papers) in enumerate(jobs)
+            for paper in papers]
+    extracted = run_many(extract_llm, [_extraction_call(t) for _, _, t in flat],
+                         concurrency=concurrency)
+    attrs: dict[int, dict] = {}
+    failures: dict[int, Exception] = {}
+    for i, ((_, paper, _), data) in enumerate(zip(flat, extracted)):
+        if isinstance(data, LLMError):
+            failures[i] = data
+        else:
+            attrs[i] = _attributes(data, paper)
+    order = sorted(attrs)
+    screened = run_many(
+        screen_llm,
+        [_screening_call(jobs[flat[i][0]][0], attrs[i], flat[i][2], ABSTRACT_BASIS)
+         for i in order],
+        concurrency=concurrency)
+    results: dict[int, ScreenedPaper] = {}
+    for i, data in zip(order, screened):
+        paper = flat[i][1]
+        try:
+            if isinstance(data, LLMError):
+                raise data
+            results[i] = _screened(paper, attrs[i], data, ABSTRACT_BASIS, None)
+        except LLMError as exc:
+            results[i] = _not_assessed(paper, exc, None)
+    for i, exc in failures.items():
+        results[i] = _not_assessed(flat[i][1], exc, None)
+    out = []
+    for j, (criteria, _) in enumerate(jobs):
+        papers = [results[i] for i in range(len(flat)) if flat[i][0] == j]
+        out.append(ScreeningResult(
+            criteria=criteria, papers=papers,
+            counts={st: sum(1 for s in papers if s.status == st) for st in STATUSES}))
+    return out
+
+
+def screen_quick(
+    llm: LLMClient,
+    jobs: list[tuple[Criteria, list[Paper]]],
+    *,
+    concurrency: int = 8,
+) -> list[ScreeningResult]:
+    """A quick decision per paper from its title and abstract, against each
+    review's own criteria: one call per paper, no attribute extraction first
+    (Samarth, 2026-10-25: a few seconds per paper). Same statuses, reasons and
+    evidence basis as full screening. Results come back in the order of `jobs`.
+    """
+    flat = [(j, paper) for j, (_, papers) in enumerate(jobs) for paper in papers]
+    calls = [_screening_call(jobs[j][0], {}, _abstract_text(paper), ABSTRACT_BASIS)
+             for j, paper in flat]
+    replies = run_many(llm, calls, concurrency=concurrency)
+    results: list[ScreenedPaper] = []
+    for (_, paper), data in zip(flat, replies):
+        try:
+            if isinstance(data, LLMError):
+                raise data
+            results.append(_screened(paper, {}, data, ABSTRACT_BASIS, None))
+        except LLMError as exc:
+            results.append(_not_assessed(paper, exc, None))
+    out = []
+    for j, (criteria, _) in enumerate(jobs):
+        papers = [r for (jj, _), r in zip(flat, results) if jj == j]
+        out.append(ScreeningResult(
+            criteria=criteria, papers=papers,
+            counts={st: sum(1 for s in papers if s.status == st) for st in STATUSES}))
+    return out

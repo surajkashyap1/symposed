@@ -151,3 +151,32 @@ def test_rate_limiter_no_wait_when_enough_time_passed():
     clock["t"] = 5.0  # plenty of time later
     limiter.wait()
     assert slept == []
+
+
+def test_a_damaged_cache_entry_is_fetched_again(tmp_path):
+    import httpx
+
+    from guide_pipeline.http import CachedHttpClient
+
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        return httpx.Response(200, json={"ok": True})
+    http = CachedHttpClient(cache_dir=tmp_path, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    assert http.get_json("https://x.test/a") == {"ok": True}
+    (entry,) = list(tmp_path.glob("*.json"))
+    entry.write_text("", encoding="utf-8")  # what a full disk left behind
+    assert http.get_json("https://x.test/a") == {"ok": True}
+    assert len(calls) == 2 and not list(tmp_path.glob("*.tmp"))
+
+
+def test_store_false_never_touches_the_disk(tmp_path):
+    import httpx
+
+    from guide_pipeline.http import CachedHttpClient
+
+    http = CachedHttpClient(cache_dir=tmp_path, client=httpx.Client(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json={"n": 1}))))
+    assert http.get_json("https://x.test/b", store=False) == {"n": 1}
+    assert list(tmp_path.iterdir()) == []

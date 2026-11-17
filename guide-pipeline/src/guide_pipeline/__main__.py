@@ -46,6 +46,15 @@ def _llm(settings: Settings, task: str, meter: UsageMeter) -> LLMClient | None:
         return None
 
 
+def _llm_direct(settings: Settings, task: str, meter: UsageMeter) -> LLMClient | None:
+    """Like _llm, but never through the Batch API (the update pipeline)."""
+    try:
+        return build_llm(settings, task, meter=meter, batch=False)
+    except LLMError as exc:
+        print(f"  {exc} (see .env.example)")
+        return None
+
+
 def _model_label(settings: Settings, task: str) -> str:
     if settings.llm_provider != "anthropic":
         return f"{settings.llm_provider}:{settings.groq_model}"
@@ -394,8 +403,19 @@ def run_cmd(path: str, limit: int | None = None, abstracts_ok: bool = False) -> 
     proforma = data.get("proforma", data)
     request = from_proforma(proforma, order_id=str(data.get("order_id", "")))
     settings = Settings.load()
+    try:
+        settings.check()
+    except ValueError as exc:
+        print(f"  {exc}")
+        return 2
     sources = build_sources(settings)
     meter = UsageMeter()
+    if settings.candidate_source == "updates":
+        from .mining.cli import run_updates_cmd
+
+        return run_updates_cmd(request, request.order_id or _Path(path).stem, settings=settings,
+                               sources=sources, meter=meter,
+                               make_llm=lambda t: _llm_direct(settings, t, meter))
     llms = {t: _llm(settings, t, meter) for t in RUN_TASKS}
     if any(v is None for v in llms.values()):
         return 2
@@ -811,15 +831,23 @@ def main(argv: list[str] | None = None) -> int:
         return consistency_cmd(rest[0], papers=n or 5)
     if argv and argv[0] == "prospero":
         return prospero_cmd(argv[1:])
+    if argv and argv[0] in ("osf", "overlap", "updates"):
+        from .mining.cli import osf_cmd, overlap_cmd, updates_cmd
+
+        if argv[0] == "updates":
+            return updates_cmd(argv[1:])
+        return osf_cmd(argv[1:]) if argv[0] == "osf" else overlap_cmd(argv[1:], sync=_SYNC)
     if argv and argv[0] == "render":
         rest = [a for a in argv[1:] if a != "--shots"]
         if not rest:
             print("Usage: python -m guide_pipeline render <run folder> [--shots]\n"
-                  "Rebuilds guide.pdf and the companion files from guide_model.json "
+                  "Rebuilds guide.docx and the companion files from guide_model.json "
                   "(no model calls). --shots retakes the PubMed screenshots.")
             return 2
         from .deliver import rerender
         out = rerender(rest[0], screenshots="--shots" in argv)
+        for warning in out.pop("warnings"):
+            print(f"  Check: {warning}")
         for name, path in out.items():
             print(f"  {name:<9} {path}")
         return 0

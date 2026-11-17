@@ -100,34 +100,41 @@ def write_tracker(m: dict[str, Any], path: str | Path, *, blank_rows: int = 300)
         if font:
             c.font = font
 
-    # Screening
+    # Screening: every suggested paper lives here, not in the guide (Samarth,
+    # 2026-10-27: the guide's paper table made it too long).
     cols = [("Row", 6), ("PMID or ID", 13), ("DOI", 22), ("Year first published", 10),
             ("First author", 16), ("Title", 48), ("Abstract", 60), ("Journal", 22),
-            ("Likely publication type", 20), ("Type from", 12), ("Link", 30),
-            ("Source", 18), ("Screener 1 decision", 16), ("Screener 2 decision", 16),
+            ("Likely publication type", 20), ("Type from", 12), ("Sample size", 14),
+            ("Free to read online?", 14), ("Link", 30), ("Source", 18),
+            ("Screener 1 decision", 16), ("Screener 2 decision", 16),
             ("Agreed decision", 16), ("Reason for exclusion", 30),
             ("Full text obtained?", 12), ("Notes", 40)]
+    col = {name: i for i, (name, _) in enumerate(cols, 1)}
     _header(screening, cols, INK)
     for r, p in enumerate(m["papers"], 2):
         values = [r - 1, p["pmid"], p.get("doi", ""), p.get("first_published") or p.get("year"),
                   p["first_author"], p["title"], p.get("abstract", ""), p["journal"],
-                  p["publication_type"], p["publication_type_basis"], p["url"],
+                  p["publication_type"], p["publication_type_basis"],
+                  p.get("sample_size") or "",  # blank: not read, fill in when you do
+                  "Yes" if p.get("full_text_open") else "Not found free, ask your library", p["url"],
                   "Symposed suggestion"]
         for c, v in enumerate(values, 1):
             cell = screening.cell(row=r, column=c, value=v)
             cell.alignment = _WRAP
-        screening.cell(row=r, column=11).hyperlink = p["url"]
-        screening.cell(row=r, column=11).font = Font(color=CLARET, underline="single")
+        link = screening.cell(row=r, column=col["Link"])
+        link.hyperlink = p["url"]
+        link.font = Font(color=CLARET, underline="single")
         screening.row_dimensions[r].height = 60
     last = len(m["papers"]) + 1 + blank_rows
-    for c in (13, 14, 15):
-        _dropdown(screening, lists, ["Screener 1", "Screener 2", "Agreed"][c - 13] + " decision",
-                  list(DECISIONS), c, 2, last)
+    decisions = [col[f"{who} decision"] for who in ("Screener 1", "Screener 2", "Agreed")]
+    for c, who in zip(decisions, ("Screener 1", "Screener 2", "Agreed")):
+        _dropdown(screening, lists, f"{who} decision", list(DECISIONS), c, 2, last)
     _dropdown(screening, lists, "Reason for exclusion", m.get("exclusion_reasons")
-              or ["Other (write in notes)"], 16, 2, last)
-    _dropdown(screening, lists, "Full text obtained", list(YES_NO), 17, 2, last)
+              or ["Other (write in notes)"], col["Reason for exclusion"], 2, last)
+    _dropdown(screening, lists, "Full text obtained", list(YES_NO),
+              col["Full text obtained?"], 2, last)
     screening.auto_filter.ref = f"A1:{get_column_letter(len(cols))}{last}"
-    _shade_decisions(screening, last)
+    _shade_decisions(screening, last, [get_column_letter(c) for c in decisions])
 
     # Data extraction
     ex_cols = [("Row", 6), ("PMID or ID", 13)] + [(f, 26) for f in m["extraction_fields"]]
@@ -172,12 +179,12 @@ def tidy_note(s: dict) -> str:
     return "Recommended in your guide" if s.get("recommended") else ""
 
 
-def _shade_decisions(ws, last: int) -> None:
+def _shade_decisions(ws, last: int, columns: list[str]) -> None:
     from openpyxl.formatting.rule import FormulaRule
 
     for value, colour in (("Include", "DDF0EC"), ("Exclude", "FBE4E1"),
                           ("Further review needed", "FBF0D9")):
-        for col in ("M", "N", "O"):
+        for col in columns:
             ws.conditional_formatting.add(
                 f"{col}2:{col}{last}",
                 FormulaRule(formula=[f'{col}2="{value}"'],

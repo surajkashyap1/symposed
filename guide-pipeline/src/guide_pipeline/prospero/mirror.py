@@ -196,6 +196,22 @@ class ProsperoMirror:
             )
         return info
 
+    def titles(self) -> dict[str, str]:
+        """{registration id: title}, for the semantic index (mining/embed.py)."""
+        return dict(self._db.execute("SELECT registration_id, title FROM prospero_mirror"))
+
+    def get(self, ids: list[str], *, reference: str = "") -> list[ProsperoMatch]:
+        """These registrations, scored against `reference` when one is given."""
+        if not ids:
+            return []
+        key = match_key(reference) if reference else ""
+        marks = ",".join("?" for _ in ids)
+        rows = self._db.execute(
+            "SELECT registration_id, title, match_key, registration_date FROM prospero_mirror "
+            f"WHERE registration_id IN ({marks})", ids).fetchall()
+        return [ProsperoMatch(rid, t, _date(d), round(similarity(key, mk), 3) if key else 0.0)
+                for rid, t, mk, d in rows]
+
     def search(
         self, title: str, *, limit: int = 5, review_threshold: float = 0.0
     ) -> list[ProsperoMatch]:

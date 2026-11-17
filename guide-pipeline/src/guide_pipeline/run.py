@@ -512,10 +512,11 @@ def run_request(
     model = build_model(content, proforma=request.proforma, retrieval_query=retrieval.query,
                         retrieval_count=retrieval.identified,
                         alternatives=[a.as_dict() for a in report.alternatives])
-    say("Rendering the PDF guide, tracker, protocol and PROSPERO draft...")
+    say("Rendering the Word guide, tracker, protocol and PROSPERO draft...")
     outputs = timed("guide", lambda: build_outputs(workspace, model, screenshots=screenshots,
                                                    say=say))
-    report.guide_path = str(outputs["pdf"])
+    content.warnings.extend(outputs["warnings"])
+    report.guide_path = str(outputs["guide"])
     report.pack_path = str(outputs["pack"])
     _finish(report, meter, settings, extra={
         "search_date": search_date,

@@ -126,8 +126,9 @@ class CachedHttpClient:
         params: Optional[Mapping[str, Any]] = None,
         *,
         validate: Optional[Callable[[CachedResponse], bool]] = None,
+        store: bool = True,
     ) -> Any:
-        return self.get(url, params, validate=validate).json()
+        return self.get(url, params, validate=validate, store=store).json()
 
     def get(
         self,
@@ -135,6 +136,7 @@ class CachedHttpClient:
         params: Optional[Mapping[str, Any]] = None,
         *,
         validate: Optional[Callable[[CachedResponse], bool]] = None,
+        store: bool = True,
     ) -> CachedResponse:
         """GET with rate limiting, retry+backoff and caching.
 
@@ -142,7 +144,13 @@ class CachedHttpClient:
         that fails it is treated as a transient failure — retried, and never cached.
         This guards against APIs (e.g. Europe PMC) that intermittently return a
         200 with an empty/partial body.
+
+        `store=False` skips the disk cache entirely: for lookups needed only while
+        a decision is made, such as the papers checked as possible later updates
+        of a review (Samarth, 2026-10-25: they need not be kept).
         """
+        if not store:
+            return self._request_with_retry("GET", url, params, validate)
         key = _cache_key("GET", url, params)
         cached = self._read_cache(key)
         if cached is not None:
@@ -150,6 +158,25 @@ class CachedHttpClient:
         response = self._request_with_retry("GET", url, params, validate)
         self._write_cache(key, response)
         return response
+
+    def post_form_json(
+        self,
+        url: str,
+        data: Mapping[str, Any],
+        *,
+        validate: Optional[Callable[[CachedResponse], bool]] = None,
+        store: bool = True,
+    ) -> Any:
+        """POST a form, cached like a GET. For queries too long for a URL (PubMed
+        E-utilities accept the same parameters either way)."""
+        if not store:
+            return self._request_with_retry("POST", url, data, validate).json()
+        key = _cache_key("POST", url, data)
+        cached = self._read_cache(key)
+        if cached is None:
+            cached = self._request_with_retry("POST", url, data, validate)
+            self._write_cache(key, cached)
+        return cached.json()
 
     # -- internals ---------------------------------------------------------
     def _request_with_retry(
@@ -163,7 +190,10 @@ class CachedHttpClient:
         for attempt in range(self.max_retries + 1):
             self._limiter.wait()
             try:
-                resp = self._client.request(method, url, params=params)
+                if method == "POST":  # the parameters go in the body
+                    resp = self._client.request(method, url, data=params)
+                else:
+                    resp = self._client.request(method, url, params=params)
             except httpx.HTTPError as exc:  # network/timeout — retryable
                 last_exc = exc
             else:
@@ -197,13 +227,23 @@ class CachedHttpClient:
         path = self._cache_path(key)
         if not path.exists():
             return None
-        data = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            # A damaged entry (seen live: an empty file left by a full disk) is a
+            # cache miss: drop it and fetch again.
+            path.unlink(missing_ok=True)
+            return None
         return CachedResponse(
             status_code=data["status_code"], text=data["text"], url=data["url"]
         )
 
     def _write_cache(self, key: str, response: CachedResponse) -> None:
-        self._cache_path(key).write_text(
+        # Written to a temporary file and moved into place, so a failed write
+        # never leaves a half-written entry behind.
+        path = self._cache_path(key)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(
             json.dumps(
                 {
                     "status_code": response.status_code,
@@ -214,3 +254,4 @@ class CachedHttpClient:
             ),
             encoding="utf-8",
         )
+        tmp.replace(path)

@@ -35,9 +35,24 @@ proforma. Separate from the Symposed Next.js app in the parent repo. Build
 - PROSPERO access goes ONLY through `prospero/adapter.py` (undocumented endpoint,
   may be replaced by a CRD feed). The pipeline queries the local mirror, never
   PROSPERO per title. Checks refuse to run on a stale mirror — never bypass that.
+  OSF is the same: only through `osf/adapter.py`, local mirror, staleness guard.
+  The one exception is `SKIP_REGISTRY_MIRRORS=true` for testing runs, and every
+  output must then say the registries were not checked.
+- The update pipeline (`docs/spec-update-pipeline.md`, the current work) lives
+  in `mining/` and is selected by `CANDIDATE_SOURCE=updates`. Its two agentic
+  filters (Step 3b before full texts, Step 5b after) run on Opus or higher only,
+  from the prompt files in `src/guide_pipeline/prompts/`, which are read every
+  run: change the prompts there, not in code. Basic searching and retrieval run
+  on Haiku, the guide on Sonnet. Samarth refers to
+  its steps by number (1 to 8). The earlier pipeline stays as
+  `CANDIDATE_SOURCE=generated`: never delete it. Every overlap verdict is kept
+  in `data/mining.sqlite`.
 - Everything a user reads is plain English for a complete beginner, with no
   semicolons and no dashes as punctuation. Model prose goes through `plain.tidy`;
   fixed wording in `assets/guide.html.j2` is checked by `test_guide_text_follows_house_style`.
   Step names come only from `guide_model.steps()`.
 - A human reviews every output and does a final live PROSPERO check on the title
   that ships. Never fully automate generation and delivery.
+- The customer gets `guide.docx` (`guide_docx.py`): read-only, proofing marks off,
+  the strip and logo anchored per page through Word (`assets/word_layout.ps1`).
+  Never put page colour or the strip in a header: Word shows header content faded.

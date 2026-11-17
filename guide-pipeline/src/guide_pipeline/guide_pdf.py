@@ -55,7 +55,8 @@ def pubmed_url(query: str, *, reviews_only: bool = False) -> str:
 
 def fmt_date(value: str) -> str:
     try:
-        return date.fromisoformat(str(value)[:10]).strftime("%-d %B %Y")
+        d = date.fromisoformat(str(value)[:10])
+        return f"{d.day} {d:%B %Y}"  # not %-d, which Windows does not support
     except ValueError:
         return str(value)
 

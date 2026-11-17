@@ -115,6 +115,87 @@ class Thresholds:
         )
 
 
+def _get_bool(name: str, default: bool) -> bool:
+    value = _get(name)
+    return default if value is None else value.lower() in ("1", "true", "yes", "on")
+
+
+
+@dataclass(frozen=True)
+class UpdateConfig:
+    """The update pipeline (docs/spec-update-pipeline.md, Samarth 2026-10-25)."""
+
+    # Step 3 checks reviews in batches and stops once this many pass both filters
+    # (Samarth, 2026-10-29: 30), then hands them to Step 3b.
+    review_count: int = 30
+    review_batch: int = 25              # step 3: reviews novelty checked per batch
+    review_pool_factor: int = 3         # step 3: reviews drawn per review needed, at most
+    # A request with no topic draws reviews at random from the whole literature,
+    # published from this year to the 3 year cutoff.
+    blank_topic_since_year: int = 2000
+    review_min_age_years: int = 3       # step 3: published more than this many years ago
+    # Step 3, optional: of the reviews found, keep only those certainly older than
+    # this many years (0 = no extra filter), then a fixed random sample of at most
+    # this many (0 = keep all). Samarth, 2026-10-25: 30 reviews over 5 years old.
+    review_sample_min_age_years: int = 0
+    review_sample: int = 0
+    # Reviews named by a person (REVIEW_PMIDS=1,2,3): step 3 is skipped for them.
+    review_pmids: tuple[str, ...] = ()
+    overlap_retrieval_k: int = 30       # step 3: later records the judge compares per review
+    max_hits: int = 3000                # step 5: a search returning more is too broad to screen
+    min_new_eligible: int = 6           # step 5: "more than 5" new eligible studies (marked only)
+    run_budget_usd: float = 50.0        # step 5: pause before screening would cost more than this
+    search_recall_min: float = 0.90     # step 7: share of the original's studies the search finds
+    screen_recall_min: float = 0.95     # step 7: ...and screening keeps
+    max_search_revisions: int = 2       # step 7: revisions after a failed recall test
+    # The two agentic filters (Samarth, 2026-10-27): Step 3b triage before full
+    # texts are asked for, Step 5b appraisal once they are in. Their prompts are
+    # read from AGENT_PROMPTS_DIR on every run.
+    target_eligible_min: int = 10       # a feasible review has at least this many eligible studies
+    target_eligible_max: int = 60       # ...and at most this many
+    max_calls_per_candidate: int = 8    # Step 3b tool calls per candidate review
+    max_calls_per_option: int = 15      # Step 5b tool calls per shortlisted option
+    full_screen_max: int = 300          # Step 5b: screen every record at or below this many
+    sample_size: int = 50               # Step 5b: otherwise screen a sample of at least this many
+    stage_budget_usd: float = 25.0      # each stage stops when its model spend passes this
+
+    @classmethod
+    def from_env(cls) -> "UpdateConfig":
+        d = cls()
+        return cls(
+            review_count=_get_int("REVIEW_COUNT", d.review_count),
+            review_batch=_get_int("REVIEW_BATCH", d.review_batch),
+            review_pool_factor=_get_int("REVIEW_POOL_FACTOR", d.review_pool_factor),
+            blank_topic_since_year=_get_int("BLANK_TOPIC_SINCE_YEAR", d.blank_topic_since_year),
+            review_min_age_years=_get_int("REVIEW_MIN_AGE_YEARS", d.review_min_age_years),
+            review_sample_min_age_years=_get_int("REVIEW_SAMPLE_MIN_AGE_YEARS",
+                                                 d.review_sample_min_age_years),
+            review_sample=_get_int("REVIEW_SAMPLE", d.review_sample),
+            review_pmids=tuple(p.strip() for p in (_get("REVIEW_PMIDS", "") or "").split(",")
+                               if p.strip()),
+            overlap_retrieval_k=_get_int("OVERLAP_RETRIEVAL_K", d.overlap_retrieval_k),
+            max_hits=_get_int("MAX_HITS", d.max_hits),
+            min_new_eligible=_get_int("MIN_NEW_ELIGIBLE", d.min_new_eligible),
+            run_budget_usd=_get_float("RUN_BUDGET_USD", d.run_budget_usd),
+            search_recall_min=_get_float("SEARCH_RECALL_MIN", d.search_recall_min),
+            screen_recall_min=_get_float("SCREEN_RECALL_MIN", d.screen_recall_min),
+            max_search_revisions=_get_int("MAX_SEARCH_REVISIONS", d.max_search_revisions),
+            target_eligible_min=_get_int("TARGET_ELIGIBLE_MIN", d.target_eligible_min),
+            target_eligible_max=_get_int("TARGET_ELIGIBLE_MAX", d.target_eligible_max),
+            max_calls_per_candidate=_get_int("MAX_CALLS_PER_CANDIDATE",
+                                             d.max_calls_per_candidate),
+            max_calls_per_option=_get_int("MAX_CALLS_PER_OPTION", d.max_calls_per_option),
+            full_screen_max=_get_int("FULL_SCREEN_MAX", d.full_screen_max),
+            sample_size=_get_int("SAMPLE_SIZE", d.sample_size),
+            stage_budget_usd=_get_float("STAGE_BUDGET_USD", d.stage_budget_usd),
+        )
+
+
+CANDIDATE_SOURCES = ("updates", "generated")
+# Models allowed to run the two agentic filters: Claude Opus 5.5 or more capable.
+AGENT_MODELS = ("claude-opus-5-5", "claude-fable-5-1", "claude-fable-5", "claude-mythos-5-1")
+
+
 @dataclass(frozen=True)
 class Settings:
     # data-source API access
@@ -131,6 +212,7 @@ class Settings:
     anthropic_api_key: Optional[str] = None
     anthropic_model: str = "claude-sonnet-5-5"          # the reader
     anthropic_decision_model: str = "claude-opus-5-5"   # the decider
+    anthropic_fast_model: str = "claude-haiku-5-5"      # quick tasks (llm.FAST_TASKS)
     llm_fallbacks: bool = True  # server side refusal fallback on synchronous calls
     llm_temperature: float = 0.4
     # step 2 landscape: how many recent years of the publication trend to fetch
@@ -152,9 +234,39 @@ class Settings:
     prospero_db: Path = Path("data/prospero.sqlite")
     prospero_max_age_days: int = 10     # refuse to run on a mirror older than this
     prospero_min_interval: float = 3.0  # seconds between requests to PROSPERO
+    # "updates" finds systematic reviews due an update (docs/spec-update-pipeline.md);
+    # "generated" is the earlier pipeline (review led or axes discovery), kept.
+    candidate_source: str = "updates"
+    # Testing runs may leave out the PROSPERO and OSF checks to save time
+    # (Samarth, 2026-10-24). Every output then says the registries were not checked.
+    skip_registry_mirrors: bool = False
+    # Testing only: PROSPERO checked, OSF not (its copy is still downloading).
+    skip_osf_mirror: bool = False
+    # Steps 3b and 5b on a safety-classifier refusal (Samarth, 2026-10-30: allowed after a
+    # false "bio" decline on abortion and transgender health topics). Empty = off,
+    # "default" = Anthropic's choice of fallback model, or a comma list of models.
+    agent_refusal_fallback: str = ""
+    # The delivered guide is a read-only Word document (Samarth, 2026-11-17). A password
+    # stops readers switching the protection off. A PDF copy is optional, made by Word.
+    guide_password: str = ""
+    guide_pdf: bool = False
+    # OSF registrations mirror, same pattern as PROSPERO
+    osf_db: Path = Path("data/osf.sqlite")
+    osf_min_interval: float = 1.0       # seconds between requests to the OSF API
+    osf_token: Optional[str] = None     # personal access token, only if rate limits bite
+    mirror_staleness_days: int = 10     # the OSF guard (PROSPERO keeps its own setting)
+    # Overlap judgements, kept permanently (local SQLite for now)
+    mining_db: Path = Path("data/mining.sqlite")
+    # Local open source embedding model for overlap retrieval (no API cost)
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    vectors_db: Path = Path("data/vectors.sqlite")
+    models_dir: Path = Path("data/models")
+    # The Step 3b and Step 5b prompts (markdown, edited by hand, read every run).
+    agent_prompts_dir: Path = Path(__file__).resolve().parent / "prompts"
     # paths
     output_dir: Path = Path("output")
     thresholds: Thresholds = field(default_factory=Thresholds)
+    updates: UpdateConfig = field(default_factory=UpdateConfig)
 
     @classmethod
     def load(cls) -> "Settings":
@@ -168,6 +280,8 @@ class Settings:
             groq_model=_get("GROQ_MODEL", "openai/gpt-oss-120b") or "openai/gpt-oss-120b",
             anthropic_api_key=_get("ANTHROPIC_API_KEY"),
             anthropic_model=_get("ANTHROPIC_MODEL", "claude-sonnet-5-5") or "claude-sonnet-5-5",
+            anthropic_fast_model=_get("ANTHROPIC_FAST_MODEL", "claude-haiku-5-5")
+            or "claude-haiku-5-5",
             anthropic_decision_model=(_get("ANTHROPIC_DECISION_MODEL", "claude-opus-5-5")
                                       or "claude-opus-5-5"),
             llm_fallbacks=(_get("LLM_FALLBACKS", "true") or "true").lower()
@@ -185,9 +299,39 @@ class Settings:
             prospero_db=Path(_get("PROSPERO_DB", "data/prospero.sqlite") or "data/prospero.sqlite"),
             prospero_max_age_days=_get_int("PROSPERO_MAX_AGE_DAYS", 10),
             prospero_min_interval=_get_float("PROSPERO_MIN_INTERVAL", 3.0),
+            candidate_source=(_get("CANDIDATE_SOURCE", "updates") or "updates").lower(),
+            skip_registry_mirrors=_get_bool("SKIP_REGISTRY_MIRRORS", False),
+            skip_osf_mirror=_get_bool("SKIP_OSF_MIRROR", False),
+            agent_refusal_fallback=(_get("AGENT_REFUSAL_FALLBACK", "") or "").strip(),
+            guide_password=_get("GUIDE_PASSWORD", "") or "",
+            guide_pdf=_get_bool("GUIDE_PDF", False),
+            osf_db=Path(_get("OSF_DB", "data/osf.sqlite") or "data/osf.sqlite"),
+            osf_min_interval=_get_float("OSF_MIN_INTERVAL", 1.0),
+            osf_token=_get("OSF_TOKEN"),
+            mirror_staleness_days=_get_int("MIRROR_STALENESS_DAYS", 10),
+            mining_db=Path(_get("MINING_DB", "data/mining.sqlite") or "data/mining.sqlite"),
+            embedding_model=_get("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")
+            or "BAAI/bge-small-en-v1.5",
+            vectors_db=Path(_get("VECTORS_DB", "data/vectors.sqlite") or "data/vectors.sqlite"),
+            models_dir=Path(_get("MODELS_DIR", "data/models") or "data/models"),
+            agent_prompts_dir=Path(_get("AGENT_PROMPTS_DIR", "")
+                                   or Path(__file__).resolve().parent / "prompts"),
             output_dir=Path(_get("OUTPUT_DIR", "output") or "output"),
             thresholds=Thresholds.from_env(),
+            updates=UpdateConfig.from_env(),
         )
+
+    def check(self) -> None:
+        """Refuse settings that contradict each other."""
+        if self.candidate_source not in CANDIDATE_SOURCES:
+            raise ValueError(f"CANDIDATE_SOURCE must be one of {', '.join(CANDIDATE_SOURCES)}")
+        if self.candidate_source == "updates" and not self.anthropic_decision_model.startswith(
+                AGENT_MODELS):
+            # The stage prompts: "claude-opus-5-5 or higher. Do not fall back to a
+            # smaller model for this stage."
+            raise ValueError(f"ANTHROPIC_DECISION_MODEL runs the Step 3b and Step 5b filters and "
+                             f"must be one of {', '.join(AGENT_MODELS)}, not "
+                             f"{self.anthropic_decision_model}")
 
     def missing_keys(self) -> list[str]:
         """Required-but-unset keys for the active LLM provider plus NCBI."""

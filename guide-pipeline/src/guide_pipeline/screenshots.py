@@ -19,6 +19,17 @@ VIEWPORT = {"width": 1280, "height": 800}
 CLIP = {"x": 120, "y": 0, "width": 1040, "height": 400}
 
 
+def launch_browser(pw):
+    """Playwright's own Chromium, else the Edge or Chrome already on the machine."""
+    errors = []
+    for channel in (None, "msedge", "chrome"):
+        try:
+            return pw.chromium.launch(channel=channel) if channel else pw.chromium.launch()
+        except Exception as exc:  # noqa: BLE001  try the next browser
+            errors.append(str(exc).splitlines()[0])
+    raise RuntimeError("no browser for Playwright: " + " | ".join(errors))
+
+
 def capture_searches(model: dict[str, Any], directory: str | Path, *,
                      say: Callable[[str], None] = print) -> dict[str, str]:
     """Save search-<n>.png for each search; return {number: file URI}."""
@@ -35,7 +46,7 @@ def capture_searches(model: dict[str, Any], directory: str | Path, *,
         return out
     try:
         with sync_playwright() as pw:
-            browser = pw.chromium.launch()
+            browser = launch_browser(pw)
             page = browser.new_page(viewport=VIEWPORT, device_scale_factor=1.5,
                                     locale="en-GB")
             for s in searches:

@@ -34,7 +34,7 @@ scheduler yet — those come back later, one at a time.
 v1 above was the cut-down slice. We are now aligning it with the full
 *Symposed Pipeline Build Spec v1.1*, still one step per session:
 
-- **A1 — Stage 2 generation + taxonomy** ✅: the 14 gap axes (weighted to 3/4/12/13),
+- **A1 — Step 5b generation + taxonomy** ✅: the 14 gap axes (weighted to 3/4/12/13),
   ≥6 axes and ≤2 per axis enforced in code (with a top-up call for unused axes),
   two-person rule, new batch with rejected titles as negative context when none
   pass (§1.2), and the fixed 5-category suggested-use taxonomy (§6.3).
@@ -115,6 +115,17 @@ v1 above was the cut-down slice. We are now aligning it with the full
   Papers show no rating: only likely eligible or unclear papers are listed, with
   PubMed's own publication type or our marked estimate. Re-render after a design
   change with `python -m guide_pipeline render <run folder> [--shots]`.
+- **Guide v3 — branded, read-only Word guide** ✅ (Samarth, 2026-11-17):
+  `guide_docx.py` turns the same HTML (`guide_pdf.render_html`) into `guide.docx`
+  in the business plan style: a dark claret cover, cream pages, a dark claret
+  strip with the cream logo down the left of every page, Cambria headings and
+  Calibri text, white cards. Word fades anything in a page header on screen, so
+  the strip is anchored in the first paragraph of each page instead, which Word
+  reports through `assets/word_layout.ps1` (Windows with Word installed; without
+  it the strip falls back to the header and the run warns). The file is protected
+  read-only (`GUIDE_PASSWORD` locks it) with spelling and grammar marks off.
+  `GUIDE_PDF=true` also saves a PDF through Word. Diagrams are drawn by
+  Playwright, which falls back to the installed Edge or Chrome.
 - **Guide v2, step 3: review led discovery** ✅ (`discovery.py`, `llm_cache.py`):
   topics one or two levels inside the specialty, each counted in PubMed (reviews
   and primary studies, last 10 years), fewest reviews first; the closest reviews
@@ -157,6 +168,75 @@ v1 above was the cut-down slice. We are now aligning it with the full
   read in full, until one is (`NOVELTY_PER_TOPIC`, `NOVELTY_MAX_CHECKS`). The
   shortlist then ends with every question considered, by topic, with its
   rationale and rating, and any that passed the gates can be picked.
+
+## The update pipeline (current)
+
+Finds systematic reviews that are due an update and writes the guide for the one
+a person picks. The steps are in `docs/spec-update-pipeline.md` (Samarth,
+2026-10-25). `CANDIDATE_SOURCE=updates` (default) selects it, and
+`CANDIDATE_SOURCE=generated` keeps the pipeline above. The code is in `mining/`.
+
+```bash
+python -m guide_pipeline run output/requests/<order>.json
+#  step 3 writes output/updates/<order>/REVIEWS.md (every review considered, and why)
+#  Step 3b (Opus agent) writes STAGE1.md: five shortlisted options
+#  PAUSED at step 4: save each shortlisted review in output/updates/<order>/fulltexts/ as <PMID>.pdf
+python -m guide_pipeline run output/requests/<order>.json
+#  step 5 counts the direct updates (UPDATES.md), Step 5b (Opus agent) writes STAGE2.md
+#  PAUSED at step 6: STAGE2.md names the selected option, UPDATES.md the direct updates
+python -m guide_pipeline updates papers <order> <PMID>   # the PMIDs and reasons for one update
+python -m guide_pipeline updates pick <order> <PMID>     # pick one
+python -m guide_pipeline run output/requests/<order>.json
+#  step 7 writes RECALL.md, step 8 writes the guide
+```
+
+Each run repeats the earlier steps from the cache at no cost. Step 3b and Step 5b
+are agentic filters on Opus whose prompts live in `src/guide_pipeline/prompts/`
+and are read on every run (see `docs/spec-update-pipeline.md`). A finished stage
+is reused: delete `stage1.json` or `stage2.json` to run it again. Step 3's novelty
+check judges each review against the later reviews that cite or resemble it,
+and against PROSPERO and OSF registrations since. The judge is Opus 5.5 at high
+effort, using Samarth's test: would an update repeat work already done, whatever
+the scope? Step 5 pauses if screening would cost more than `RUN_BUDGET_USD` (50).
+Testing runs may set `SKIP_REGISTRY_MIRRORS=true`, and every output then says
+the registries were not checked.
+
+`overlap eval overlap_fixtures/pairs-v1.json` measures the judge on 20 pairs
+labelled by Samarth.
+
+### OSF mirror
+
+```bash
+python -m guide_pipeline osf harvest          # once, at setup (every public registration, ~1-2 h)
+python -m guide_pipeline osf refresh          # before each run: created or changed since last refresh
+python -m guide_pipeline osf status           # size, coverage, fresh or STALE
+python -m guide_pipeline osf search "<text>"  # lexical search of the mirror
+python -m guide_pipeline overlap index        # embed both mirrors for semantic search (local)
+```
+
+OSF's API cannot filter registrations by template or registration date (checked
+live 2026-10-24). So the harvest reads every public registration a month at a
+time, with a sparse field set of about 240 KB per 100, and keeps a registration
+when both of these hold:
+
+1. **It is an evidence synthesis.** Either it uses the "Generalized Systematic
+   Review Registration" template, the only one of OSF's 44 templates made for
+   reviews, or its title or description names a review design (systematic,
+   scoping, umbrella, rapid, meta-analysis and so on).
+2. **It is about health.** Either it has a health subject in the bepress
+   taxonomy (anything under Medicine and Health Sciences, or health subjects
+   filed elsewhere such as Clinical Psychology), or its title or description
+   uses health words.
+
+The word lists are in `osf/records.py` and are deliberately broad: recall
+comes first. In a live test on 1 to 24 October 2026, the harvest read 5,163
+registrations and kept 2,613. Of those, 1,900 used the review template, 841
+OSF Preregistration and 439 Open-Ended Registration. Withdrawn registrations
+are kept, marked, and never returned by search. The delta pull asks for
+everything modified since the mirror was last current, so new registrations and
+withdrawals both arrive. Checks refuse to run on a mirror more than
+`MIRROR_STALENESS_DAYS` (10) old. If the anonymous rate limit bites, add a free
+personal access token as `OSF_TOKEN`.
 
 ## Supplying full texts
 

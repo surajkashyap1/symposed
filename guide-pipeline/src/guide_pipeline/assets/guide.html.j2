@@ -405,26 +405,19 @@ team, and you will learn more about the literature as you go.</p></div>
   <p>We could read the full text of only some of these papers. Please screen every paper
   yourself, and remember your own search will find papers that are not on this list.</p></div>
   {%- if m.papers %}
-  <table class="compact"><thead><tr>
-    <th style="width:4%">#</th><th style="width:15%">First author, year</th><th>Title</th>
-    <th style="width:16%">Journal</th><th style="width:15%">Likely publication type</th>
-    <th style="width:10%">Sample size</th><th style="width:11%">Link</th></tr></thead><tbody>
-  {%- for p in m.papers %}<tr>
-    <td>{{ p.n }}</td><td>{{ p.first_author }}{% if p.first_published or p.year %}, {{ p.first_published or p.year }}{% endif %}</td>
-    <td>{{ p.title }}</td><td>{{ p.journal }}</td>
-    <td>{{ p.publication_type }}<br><span class="tag {{ 'tag-pubmed' if p.publication_type_basis == 'PubMed' else 'tag-guess' }}">{{ 'from PubMed' if p.publication_type_basis == 'PubMed' else ('our estimate' if p.publication_type_basis == 'our estimate' else p.publication_type_basis) }}</span></td>
-    <td>{{ p.sample_size or "Not stated" }}</td>
-    <td><a href="{{ p.url }}">{{ p.id_label }} {{ p.pmid }}</a>{% if p.full_text_open %}<br><span class="small">free full text</span>{% endif %}</td></tr>
-  {%- endfor %}</tbody></table>
-  <p class="caption">"From PubMed" means PubMed itself labels the paper with this type.
-  "Our estimate" means PubMed gives no type, so we made an educated guess from the title and
-  abstract. Check it when you read the paper.</p>
+  <p>All {{ m.papers|length }} papers are in the <strong>Screening</strong> sheet of your paper
+  tracker (the Excel file that comes with this guide), one row each. Each row has the title,
+  abstract, journal, likely publication type, whether it is free to read online, and
+  a link to it in PubMed. Screen them in that sheet.</p>
+  <p class="caption">In the "Type from" column, "PubMed" means PubMed itself labels the paper with
+  this type. "Our estimate" means PubMed gives no type, so we made an educated guess from the
+  title and abstract. Check it when you read the paper.</p>
+  {%- set closed = m.papers|rejectattr("full_text_open")|list|length %}
+  {%- if closed %}
+  <p>We found no free full text for {{ closed }} of them. They are marked
+  "Not found free, ask your library" in the tracker. Ask your university or NHS library for
+  those.</p>
   {%- endif %}
-  {%- if m.own_access %}
-  <h4>Papers to get through your library</h4>
-  <p>These papers are not free to read online. Ask your university or NHS library for the full
-  text.</p>
-  <ul class="small">{% for x in m.own_access %}<li>{{ x.title }}{% if x.doi %} · <a href="https://doi.org/{{ x.doi }}">doi.org/{{ x.doi }}</a>{% endif %}</li>{% endfor %}</ul>
   {%- endif %}
   <div class="keep"><h4>Before you move on</h4>
   <ul class="check"><li>Two people screened every title and abstract independently.</li>

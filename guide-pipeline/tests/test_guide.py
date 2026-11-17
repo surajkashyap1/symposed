@@ -175,7 +175,7 @@ def test_systematic_guide_has_every_section_and_verbatim_text():
         assert para in text
     assert "Methodological support for this study was provided by Symposed." in text
     assert "321" in text  # a real strategy count
-    assert "https://doi.org/10.1/unclear" in text  # own-access list
+    assert "ask your library" in text  # papers needing a library point to the tracker
     assert len(llm.calls) == 4
 
 
@@ -224,3 +224,10 @@ def test_screening_volume_uses_the_triage_count():
     c, _ = _content()
     assert c.feasibility["records_to_screen"] == 300  # triage count, not the 3 fetched
     assert c.timeline_assumptions["records_to_screen"] == 300
+
+
+def test_mesh_tags_read_unquoted_headings_alone():
+    from guide_pipeline.guide_content import _MESH_TAG
+
+    q = '("Atrial Fibrillation"[Mesh] OR af[tiab]) AND humans[Mesh] AND (India[mh])'
+    assert [a or b for a, b in _MESH_TAG.findall(q)] == ["Atrial Fibrillation", "humans", "India"]

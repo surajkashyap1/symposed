@@ -296,7 +296,9 @@ _DESIGNER = (
     " Search strategies are the exception: write them in exact database syntax. "
     "You return ONLY JSON."
 )
-_MESH_TAG = re.compile(r'"?([^"()]+?)"?\s*\[(?:mh|mesh|MeSH|MeSH Terms|Mesh)(?::noexp)?\]')
+# A quoted heading may hold spaces, an unquoted one is a single word: else
+# ') AND humans[Mesh]' reads as the heading "AND humans" (seen live 2026-10-26).
+_MESH_TAG = re.compile(r'(?:"([^"]+)"|([^\s"()]+))\s*\[(?:mh|mesh|MeSH|MeSH Terms|Mesh)(?::noexp)?\]')
 _CITE = re.compile(r"\[(\d+)\]")
 
 
@@ -311,8 +313,13 @@ class Strategy:
 
 def _verify_mesh(pubmed: PubMedClient, query: str) -> list[str]:
     missing = []
-    for term in dict.fromkeys(t.strip() for t in _MESH_TAG.findall(query)):
+    for term in dict.fromkeys((q or w).strip() for q, w in _MESH_TAG.findall(query)):
         found = {m.name.lower() for m in pubmed.mesh_terms(term, max_terms=5)}
+        if term.lower() not in found:
+            # A broad heading can rank below narrower ones in a plain lookup
+            # (seen live: "Obesity", "Bias", "COVID-19"), so ask for it exactly.
+            found |= {m.name.lower() for m in pubmed.mesh_terms(f'"{term}"[MeSH Terms]',
+                                                                  max_terms=20)}
         if term.lower() not in found:
             missing.append(term)
     return missing

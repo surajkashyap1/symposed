@@ -93,7 +93,7 @@ def stubbed(monkeypatch):
     def fake_build_outputs(workspace, model, **kw):
         workspace.guide_path.write_text("guide")
         workspace.pack_path.write_text("pack")
-        return {"pdf": workspace.guide_path, "pack": workspace.pack_path}
+        return {"guide": workspace.guide_path, "pack": workspace.pack_path, "warnings": []}
 
     monkeypatch.setattr(run_mod, "retrieve", fake_retrieve)
     monkeypatch.setattr(run_mod, "screen_papers", fake_screen)
@@ -134,7 +134,7 @@ def found(tmp_path=None):
 def test_found_run_writes_guide_results_and_metrics(tmp_path, monkeypatch, stubbed):
     report = run(tmp_path, monkeypatch, found())
     assert report.outcome == FOUND and report.title == "Winner"
-    assert report.guide_path.endswith("guide.pdf")
+    assert report.guide_path.endswith("guide.docx")
     assert report.pack_path.endswith("guide-pack.zip")
     assert stubbed["assembled_title"] == "Winner"
     # one MeSH warning, plus: the other candidate was rejected, so no alternatives

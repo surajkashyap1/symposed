@@ -72,3 +72,39 @@ def test_no_missing_keys_when_configured(monkeypatch):
     monkeypatch.setenv("NCBI_API_KEY", "x")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "y")
     assert Settings.load().missing_keys() == []
+
+
+# -- the update pipeline ------------------------------------------------------
+UPDATE_VARS = ["CANDIDATE_SOURCE", "SKIP_REGISTRY_MIRRORS", "REVIEW_COUNT",
+               "REVIEW_MIN_AGE_YEARS", "MAX_HITS", "RUN_BUDGET_USD", "MIRROR_STALENESS_DAYS"]
+
+
+def test_update_pipeline_defaults(monkeypatch):
+    for name in UPDATE_VARS:
+        monkeypatch.delenv(name, raising=False)
+    s = Settings.load()
+    assert s.candidate_source == "updates" and not s.skip_registry_mirrors
+    u = s.updates
+    assert (u.review_count, u.review_min_age_years, u.overlap_retrieval_k) == (30, 3, 30)
+    assert (u.review_batch, u.review_pool_factor, u.blank_topic_since_year) == (25, 3, 2000)
+    assert (u.max_hits, u.min_new_eligible) == (3000, 6)
+    assert (u.search_recall_min, u.screen_recall_min, u.max_search_revisions) == (0.90, 0.95, 2)
+    assert s.mirror_staleness_days == 10
+    s.check()
+
+
+def test_update_pipeline_env_overrides(monkeypatch):
+    monkeypatch.setenv("REVIEW_COUNT", "80")
+    monkeypatch.setenv("SKIP_REGISTRY_MIRRORS", "true")
+    s = Settings.load()
+    assert s.updates.review_count == 80 and s.skip_registry_mirrors
+
+
+def test_unknown_candidate_source_is_refused(monkeypatch):
+    import pytest
+
+    monkeypatch.setenv("CANDIDATE_SOURCE", "generated")
+    Settings.load().check()
+    monkeypatch.setenv("CANDIDATE_SOURCE", "invented")
+    with pytest.raises(ValueError):
+        Settings.load().check()

@@ -18,6 +18,9 @@ dependencies = [
   "jinja2>=3.1",
   "playwright>=1.50",
   "pypdf>=5.0",
+  # local embedding model for overlap retrieval (gap mining v2), ONNX on the CPU
+  "fastembed>=0.5",
+  "numpy>=1.26",
 ]
 
 [project.optional-dependencies]

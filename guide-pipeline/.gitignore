@@ -12,5 +12,6 @@ dist/
 output/*
 !output/.gitkeep
 
-# the PROSPERO mirror is a local database, rebuilt by `prospero harvest`
+# local databases: the PROSPERO and OSF mirrors (`prospero harvest`, `osf harvest`),
+# the gap mining store, the embedding index and the embedding model
 data/

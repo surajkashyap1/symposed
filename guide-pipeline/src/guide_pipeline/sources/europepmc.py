@@ -16,6 +16,7 @@ from .pubmed import Paper
 
 SEARCH_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 FULLTEXT_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/{pmcid}/fullTextXML"
+CITATIONS_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/MED/{pmid}/citations"
 _ID_CHUNK = 100  # PMIDs per open-access lookup query
 
 
@@ -154,6 +155,22 @@ class EuropePmcClient:
                 if pmid and pmcid and rec.get("isOpenAccess") == "Y":
                     found[str(pmid)] = str(pmcid)
         return found
+
+    def citing_pmids(self, pmid: str, *, max_records: int = 2000,
+                     store: bool = True) -> list[str]:
+        """PMIDs of the articles that cite this one (Europe PMC citations endpoint)."""
+        out: list[str] = []
+        page = 1
+        while len(out) < max_records:
+            data = self.http.get_json(CITATIONS_URL.format(pmid=pmid),
+                                      {"format": "json", "pageSize": "1000", "page": str(page)},
+                                      validate=_has_hitcount, store=store)
+            items = (data.get("citationList") or {}).get("citation") or []
+            out += [str(c["id"]) for c in items if c.get("source") == "MED" and c.get("id")]
+            if not items or page * 1000 >= int(data.get("hitCount", 0)):
+                break
+            page += 1
+        return out[:max_records]
 
     def full_text_xml(self, pmcid: str) -> str:
         """The JATS XML full text of an open-access article."""

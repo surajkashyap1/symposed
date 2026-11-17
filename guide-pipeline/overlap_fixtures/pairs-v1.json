@@ -1,0 +1,428 @@
+{
+  "name": "overlap-pairs-v1",
+  "status": "Labels reviewed by Samarth 2026-10-25 (n2 changed to duplicate; d7 note to confirm)",
+  "about": "Each pair: a proposed_question (as the pipeline would propose it) and a published_review from PubMed. label 'duplicate' = the published review already answers the proposed question. 'different' = same topic, but one element changes the question (hard negatives). The evaluation fetches the review's title and abstract from PubMed by PMID; title_for_reference is only for a person reading this file.",
+  "pairs": [
+    {
+      "id": "d1",
+      "label": "duplicate",
+      "note": "Same question as the earlier review (PMID 28658157) the candidate is modelled on.",
+      "proposed_question": {
+        "title": "Tranexamic acid plus drain clamping to reduce blood loss after primary total knee arthroplasty",
+        "population": "adults undergoing primary total knee arthroplasty",
+        "intervention": "tranexamic acid combined with temporary drain clamping",
+        "comparator": "tranexamic acid alone, drain clamping alone, or no treatment",
+        "outcomes": "transfusion, total blood loss, drain output, haemoglobin drop, deep vein thrombosis",
+        "study_designs": "randomised and non-randomised controlled studies"
+      },
+      "published_review": {
+        "pmid": "29408472",
+        "title_for_reference": "Tranexamic acid plus drain-clamping can reduce blood loss in total knee arthroplasty: A systematic review and meta-analysis.",
+        "year": 2018,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/29408472/"
+      },
+      "reviewer_note": "Agreed duplicate.",
+      "rejected_for_other_reasons": null
+    },
+    {
+      "id": "d2",
+      "label": "duplicate",
+      "note": "Same PICO.",
+      "proposed_question": {
+        "title": "Oral tranexamic acid for blood loss in total knee arthroplasty",
+        "population": "adults undergoing total knee arthroplasty",
+        "intervention": "oral tranexamic acid",
+        "comparator": "placebo or no tranexamic acid",
+        "outcomes": "total blood loss, haemoglobin reduction, transfusion, complications",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "30407285",
+        "title_for_reference": "Oral tranexamic acid reduces blood loss in total-knee arthroplasty: A meta-analysis.",
+        "year": 2018,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/30407285/"
+      },
+      "reviewer_note": "Agreed duplicate.",
+      "rejected_for_other_reasons": null
+    },
+    {
+      "id": "d3",
+      "label": "duplicate",
+      "note": "Same PICO.",
+      "proposed_question": {
+        "title": "Probiotics for preventing necrotising enterocolitis in preterm infants",
+        "population": "preterm infants",
+        "intervention": "probiotic supplementation",
+        "comparator": "placebo or no probiotic",
+        "outcomes": "necrotising enterocolitis, all cause mortality, sepsis",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "25098619",
+        "title_for_reference": "A meta-analysis of probiotics for preventing necrotizing enterocolitis in preterm neonates.",
+        "year": 2014,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/25098619/"
+      },
+      "reviewer_note": "Duplicate. Necrotising enterocolitis occurs only in the first days to weeks of life, so neonate versus infant does not change the review.",
+      "rejected_for_other_reasons": null
+    },
+    {
+      "id": "d4",
+      "label": "duplicate",
+      "note": "Same PICO, published later.",
+      "proposed_question": {
+        "title": "Probiotics for preventing necrotising enterocolitis in preterm infants",
+        "population": "preterm infants",
+        "intervention": "probiotic supplementation",
+        "comparator": "placebo or no probiotic",
+        "outcomes": "necrotising enterocolitis, all cause mortality, sepsis",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "31420743",
+        "title_for_reference": "Probiotic strategies to prevent necrotizing enterocolitis in preterm infants: a meta-analysis.",
+        "year": 2019,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/31420743/"
+      },
+      "reviewer_note": "Duplicate.",
+      "rejected_for_other_reasons": null
+    },
+    {
+      "id": "d5",
+      "label": "duplicate",
+      "note": "Same population (HFpEF or HFmrEF), same outcomes.",
+      "proposed_question": {
+        "title": "SGLT2 inhibitors in heart failure with preserved or mildly reduced ejection fraction",
+        "population": "adults with heart failure and ejection fraction above 40%",
+        "intervention": "SGLT2 inhibitors",
+        "comparator": "placebo",
+        "outcomes": "cardiovascular death, hospitalisation for heart failure",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "36914068",
+        "title_for_reference": "SGLT2 inhibitors and cardiovascular outcomes in heart failure with mildly reduced and preserved ejection fraction: A systematic review and meta-analysis.",
+        "year": 2023,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/36914068/"
+      },
+      "reviewer_note": "Duplicate.",
+      "rejected_for_other_reasons": null
+    },
+    {
+      "id": "d6",
+      "label": "duplicate",
+      "note": "Same PICO.",
+      "proposed_question": {
+        "title": "Adjunctive corticosteroids for adults hospitalised with community acquired pneumonia",
+        "population": "adults hospitalised with community acquired pneumonia",
+        "intervention": "systemic corticosteroids added to usual care",
+        "comparator": "placebo or usual care",
+        "outcomes": "all cause mortality, mechanical ventilation, adverse events",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "38128217",
+        "title_for_reference": "Efficacy and safety of corticosteroids for the treatment of community-acquired pneumonia: A systematic review and meta-analysis of randomized controlled trials.",
+        "year": 2023,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/38128217/"
+      },
+      "reviewer_note": "Duplicate.",
+      "rejected_for_other_reasons": null
+    },
+    {
+      "id": "d7",
+      "label": "duplicate",
+      "note": "Same PICO, limited to non viral CAP: still the same question.",
+      "proposed_question": {
+        "title": "Adjunctive corticosteroids for adults hospitalised with community acquired pneumonia",
+        "population": "adults hospitalised with community acquired pneumonia",
+        "intervention": "systemic corticosteroids added to usual care",
+        "comparator": "placebo or usual care",
+        "outcomes": "all cause mortality, mechanical ventilation, adverse events",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "40323455",
+        "title_for_reference": "Corticosteroids for adult patients hospitalised with non-viral community-acquired pneumonia: a systematic review and meta-analysis.",
+        "year": 2025,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/40323455/"
+      },
+      "reviewer_note": "Duplicate: the proposed scope can include viral CAP, so it contains the published non viral review and would repeat its work. (Samarth's note was cut off; this reading to be confirmed.)",
+      "rejected_for_other_reasons": null
+    },
+    {
+      "id": "d8",
+      "label": "duplicate",
+      "note": "Same PICO.",
+      "proposed_question": {
+        "title": "Melatonin or ramelteon for preventing delirium in hospitalised adults",
+        "population": "adults admitted to hospital (medical, surgical or intensive care)",
+        "intervention": "melatonin or ramelteon",
+        "comparator": "placebo or usual care",
+        "outcomes": "incidence of delirium",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "33348252",
+        "title_for_reference": "Melatonin for delirium prevention in hospitalized patients: A systematic review and meta-analysis.",
+        "year": 2020,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/33348252/"
+      },
+      "reviewer_note": "Duplicate, unless the proposed review compared melatonin with ramelteon, or ramelteon alone with placebo, and the published one did not.",
+      "rejected_for_other_reasons": null
+    },
+    {
+      "id": "d9",
+      "label": "duplicate",
+      "note": "Same PICO.",
+      "proposed_question": {
+        "title": "Melatonin for preventing delirium in critically ill adults",
+        "population": "critically ill adults in intensive care",
+        "intervention": "exogenous melatonin",
+        "comparator": "placebo or usual care",
+        "outcomes": "incidence and duration of delirium",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "41051561",
+        "title_for_reference": "Melatonin and delirium in the intensive care units: a systematic review and meta-analysis of randomized controlled trials.",
+        "year": 2025,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/41051561/"
+      },
+      "reviewer_note": "Duplicate, since the published review looks at melatonin for delirium.",
+      "rejected_for_other_reasons": null
+    },
+    {
+      "id": "d10",
+      "label": "duplicate",
+      "note": "Same PICO.",
+      "proposed_question": {
+        "title": "Corticosteroids for adults with sepsis or septic shock",
+        "population": "adults with sepsis or septic shock",
+        "intervention": "systemic corticosteroids",
+        "comparator": "placebo or standard care",
+        "outcomes": "mortality, shock reversal, adverse events",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "38250247",
+        "title_for_reference": "Corticosteroids in Sepsis and Septic Shock: A Systematic Review, Pairwise, and Dose-Response Meta-Analysis.",
+        "year": 2024,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/38250247/"
+      },
+      "reviewer_note": "Duplicate.",
+      "rejected_for_other_reasons": null
+    },
+    {
+      "id": "n1",
+      "label": "different",
+      "note": "Record is oral tranexamic acid without drain clamping: different intervention.",
+      "proposed_question": {
+        "title": "Tranexamic acid plus drain clamping to reduce blood loss after primary total knee arthroplasty",
+        "population": "adults undergoing primary total knee arthroplasty",
+        "intervention": "tranexamic acid combined with temporary drain clamping",
+        "comparator": "tranexamic acid alone, drain clamping alone, or no treatment",
+        "outcomes": "transfusion, total blood loss, drain output, haemoglobin drop, deep vein thrombosis",
+        "study_designs": "randomised and non-randomised controlled studies"
+      },
+      "published_review": {
+        "pmid": "30407285",
+        "title_for_reference": "Oral tranexamic acid reduces blood loss in total-knee arthroplasty: A meta-analysis.",
+        "year": 2018,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/30407285/"
+      },
+      "reviewer_note": "Different: the proposed review adds drain clamping, which changes the scope.",
+      "rejected_for_other_reasons": null
+    },
+    {
+      "id": "n2",
+      "label": "duplicate",
+      "note": "Record compares topical with systemic tranexamic acid, in knee and hip: different comparison.",
+      "proposed_question": {
+        "title": "Oral tranexamic acid for blood loss in total knee arthroplasty",
+        "population": "adults undergoing total knee arthroplasty",
+        "intervention": "oral tranexamic acid",
+        "comparator": "placebo or no tranexamic acid",
+        "outcomes": "total blood loss, haemoglobin reduction, transfusion, complications",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "40763214",
+        "title_for_reference": "Topical Versus Systemic Tranexamic Acid to Reduce Blood Loss After Total Knee and Total Hip Arthroplasty: A Systematic Review and Meta-Analysis.",
+        "year": 2025,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/40763214/"
+      },
+      "reviewer_note": "Duplicate: oral tranexamic acid is systemic, and the published review already covers systemic (and topical) tranexamic acid, so the narrower proposed review repeats its work.",
+      "rejected_for_other_reasons": null
+    },
+    {
+      "id": "n3",
+      "label": "different",
+      "note": "Record is preterm infants: different population.",
+      "proposed_question": {
+        "title": "Probiotics for preventing necrotising enterocolitis in term neonates with congenital heart disease",
+        "population": "term neonates with congenital heart disease",
+        "intervention": "probiotic supplementation",
+        "comparator": "placebo or no probiotic",
+        "outcomes": "necrotising enterocolitis, mortality",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "25098619",
+        "title_for_reference": "A meta-analysis of probiotics for preventing necrotizing enterocolitis in preterm neonates.",
+        "year": 2014,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/25098619/"
+      },
+      "reviewer_note": "Different from this review, but the question should be rejected: it narrows the population with no evidence that probiotics work differently in term neonates with congenital heart disease, and NEC is mostly a preterm disease, so there would be few eligible studies.",
+      "rejected_for_other_reasons": "narrowed population without clinical rationale, too few studies"
+    },
+    {
+      "id": "n4",
+      "label": "different",
+      "note": "Record is probiotics for NEC: different intervention and outcome.",
+      "proposed_question": {
+        "title": "Lactoferrin alone for preventing late onset sepsis in preterm infants",
+        "population": "preterm infants",
+        "intervention": "oral lactoferrin without probiotics",
+        "comparator": "placebo",
+        "outcomes": "late onset sepsis, mortality",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "33435456",
+        "title_for_reference": "Probiotics for Preventing Necrotizing Enterocolitis in Preterm Infants: A Network Meta-Analysis.",
+        "year": 2021,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/33435456/"
+      },
+      "reviewer_note": "Different, but reject: such reviews already exist.",
+      "rejected_for_other_reasons": "already covered by other existing reviews"
+    },
+    {
+      "id": "n5",
+      "label": "different",
+      "note": "Same drug class, different population and outcomes.",
+      "proposed_question": {
+        "title": "Dapagliflozin for kidney outcomes in adults with type 1 diabetes",
+        "population": "adults with type 1 diabetes",
+        "intervention": "dapagliflozin added to insulin",
+        "comparator": "placebo with insulin",
+        "outcomes": "eGFR decline, albuminuria, diabetic ketoacidosis",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "36914068",
+        "title_for_reference": "SGLT2 inhibitors and cardiovascular outcomes in heart failure with mildly reduced and preserved ejection fraction: A systematic review and meta-analysis.",
+        "year": 2023,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/36914068/"
+      },
+      "reviewer_note": "Different, but reject: such reviews already exist.",
+      "rejected_for_other_reasons": "already covered by other existing reviews"
+    },
+    {
+      "id": "n6",
+      "label": "different",
+      "note": "Record is sepsis and septic shock of any source: different population.",
+      "proposed_question": {
+        "title": "Adjunctive corticosteroids for adults hospitalised with community acquired pneumonia",
+        "population": "adults hospitalised with community acquired pneumonia",
+        "intervention": "systemic corticosteroids added to usual care",
+        "comparator": "placebo or usual care",
+        "outcomes": "all cause mortality, mechanical ventilation, adverse events",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "38250247",
+        "title_for_reference": "Corticosteroids in Sepsis and Septic Shock: A Systematic Review, Pairwise, and Dose-Response Meta-Analysis.",
+        "year": 2024,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/38250247/"
+      },
+      "reviewer_note": "Different, but reject: such reviews already exist.",
+      "rejected_for_other_reasons": "already covered by other existing reviews"
+    },
+    {
+      "id": "n7",
+      "label": "different",
+      "note": "Record is adults: different population.",
+      "proposed_question": {
+        "title": "Adjunctive corticosteroids for children hospitalised with community acquired pneumonia",
+        "population": "children under 18 hospitalised with community acquired pneumonia",
+        "intervention": "systemic corticosteroids added to usual care",
+        "comparator": "placebo or usual care",
+        "outcomes": "treatment failure, length of stay, mortality",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "37076606",
+        "title_for_reference": "Corticosteroids in Community-Acquired Bacterial Pneumonia: a Systematic Review, Pairwise and Dose-Response Meta-Analysis.",
+        "year": 2023,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/37076606/"
+      },
+      "reviewer_note": "Different, but reject: such reviews already exist.",
+      "rejected_for_other_reasons": "already covered by other existing reviews"
+    },
+    {
+      "id": "n8",
+      "label": "different",
+      "note": "Record is ramelteon, suvorexant and lemborexant, not melatonin: different intervention.",
+      "proposed_question": {
+        "title": "Melatonin for preventing delirium in critically ill adults",
+        "population": "critically ill adults in intensive care",
+        "intervention": "exogenous melatonin",
+        "comparator": "placebo or usual care",
+        "outcomes": "incidence and duration of delirium",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "40511987",
+        "title_for_reference": "Efficacy of Ramelteon, Suvorexant, and Lemborexant for Delirium Prevention in Hospitalized Patients: A Systematic Review and Meta-Analysis.",
+        "year": 2025,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/40511987/"
+      },
+      "reviewer_note": "Different, but reject: such reviews already exist.",
+      "rejected_for_other_reasons": "already covered by other existing reviews"
+    },
+    {
+      "id": "n9",
+      "label": "different",
+      "note": "Record is delirium, not sleep: different outcome.",
+      "proposed_question": {
+        "title": "Melatonin for sleep quality in critically ill adults",
+        "population": "critically ill adults in intensive care",
+        "intervention": "exogenous melatonin",
+        "comparator": "placebo or usual care",
+        "outcomes": "sleep quality and duration",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "41051561",
+        "title_for_reference": "Melatonin and delirium in the intensive care units: a systematic review and meta-analysis of randomized controlled trials.",
+        "year": 2025,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/41051561/"
+      },
+      "reviewer_note": "Different, but unclear whether enough studies measure sleep quality in critically ill patients.",
+      "rejected_for_other_reasons": "possibly too few studies"
+    },
+    {
+      "id": "n10",
+      "label": "different",
+      "note": "Record asks which vasopressor to stop first: different question.",
+      "proposed_question": {
+        "title": "Vasopressin versus norepinephrine as first line vasopressor in septic shock",
+        "population": "adults with septic shock",
+        "intervention": "vasopressin as the first vasopressor",
+        "comparator": "norepinephrine as the first vasopressor",
+        "outcomes": "mortality, renal replacement therapy",
+        "study_designs": "randomised controlled trials"
+      },
+      "published_review": {
+        "pmid": "31008869",
+        "title_for_reference": "Norepinephrine vs Vasopressin: Which Vasopressor Should Be Discontinued First in Septic Shock? A Meta-Analysis.",
+        "year": 2020,
+        "link": "https://pubmed.ncbi.nlm.nih.gov/31008869/"
+      },
+      "reviewer_note": "Different, but reject: norepinephrine first line and vasopressin second line is settled, and such reviews already exist.",
+      "rejected_for_other_reasons": "clinically settled question, already covered by other existing reviews"
+    }
+  ],
+  "definition": "duplicate = the proposed review would repeat work already in the published review, whether its scope is the same, narrower, or wider and containing it. The only exception is an explicit update of the original review (enough new eligible studies since its search). rejected_for_other_reasons records rejections that are not about this pair (other gates), and is not used when scoring the overlap judge."
+}

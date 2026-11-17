@@ -1,7 +1,7 @@
 """Per-request output folder.
 
 Each guide request gets its own folder holding a JSON of everything found
-(`results.json`), the designed guide (`guide.pdf`) with its render model
+(`results.json`), the designed guide (`guide.docx`) with its render model
 (`guide_model.json`) and editable companion files, and a `cache/` of raw API
 responses.
 """
@@ -35,6 +35,10 @@ class Workspace:
 
     @property
     def guide_path(self) -> Path:
+        return self.dir / "guide.docx"
+
+    @property
+    def pdf_path(self) -> Path:
         return self.dir / "guide.pdf"
 
     @property

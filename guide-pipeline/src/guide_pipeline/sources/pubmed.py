@@ -20,6 +20,7 @@ from ..http import CachedHttpClient, CachedResponse
 ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 ESUMMARY_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi"
 EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+ELINK_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi"
 
 # EFetch is fetched by GET with a comma-joined id list; keep chunks small enough
 # for the URL and polite to NCBI.
@@ -77,6 +78,13 @@ def _has_count(resp: CachedResponse) -> bool:
 def _has_result(resp: CachedResponse) -> bool:
     try:
         return "result" in resp.json()
+    except ValueError:
+        return False
+
+
+def _has_linksets(resp: CachedResponse) -> bool:
+    try:
+        return "linksets" in resp.json()
     except ValueError:
         return False
 
@@ -209,6 +217,38 @@ class PubMedClient:
         data = self.http.get_json(ESEARCH_URL, params, validate=_has_count)
         return list(data["esearchresult"].get("idlist", []))
 
+    def search_dated(self, query: str, *, datetype: str = "pdat",
+                     mindate: Optional[str] = None, maxdate: Optional[str] = None,
+                     retmax: int = 10_000, sort: str = "relevance",
+                     store: bool = True, retstart: int = 0) -> tuple[int, list[str]]:
+        """(count, PMIDs) for `query` within a date range given as YYYY/MM/DD.
+
+        `datetype` is "pdat" (publication date) or "edat" (the date the record
+        entered PubMed, the usual cut point for updating a review's search).
+        """
+        params = {**self._base_params(), "term": query, "retmax": str(retmax), "sort": sort,
+                  **({"retstart": str(retstart)} if retstart else {}),
+                  "datetype": datetype, "mindate": mindate or "1800/01/01",
+                  "maxdate": maxdate or "3000/12/31"}  # both ends, or the range is ignored
+        # Sent as a POST: a review's full search strategy, or a list of PMIDs, can be
+        # longer than a URL may be (seen live: 414 Request-URI Too Long).
+        data = self.http.post_form_json(ESEARCH_URL, params, validate=_has_count, store=store)
+        r = data["esearchresult"]
+        return int(r["count"]), list(r.get("idlist", []))
+
+    def similar_pmids(self, pmid: str, *, limit: int = 200, store: bool = True) -> list[str]:
+        """PubMed's "similar articles" for one record, most similar first."""
+        params = {**self._base_params(), "dbfrom": "pubmed", "db": "pubmed", "id": pmid,
+                  "linkname": "pubmed_pubmed", "cmd": "neighbor_score"}
+        data = self.http.get_json(ELINK_URL, params, validate=_has_linksets, store=store)
+        out: list[str] = []
+        for ls in data.get("linksets", []):
+            for db in ls.get("linksetdbs", []):
+                if db.get("linkname") == "pubmed_pubmed":
+                    links = db.get("links", [])
+                    out += [str(x["id"] if isinstance(x, dict) else x) for x in links]
+        return [p for p in out if p != pmid][:limit]
+
     def titles(self, pmids: list[str]) -> list[tuple[str, str]]:
         """(pmid, title) pairs via ESummary — titles only, no abstracts."""
         if not pmids:
@@ -222,7 +262,24 @@ class PubMedClient:
                 out.append((uid, title))
         return out
 
-    def fetch_details(self, pmids: list[str]) -> list[Paper]:
+    def summaries(self, pmids: list[str], *, store: bool = True) -> list[dict]:
+        """Short records via ESummary: pmid, title, year and publication types only
+        (a small fraction of a full record), for deciding what to read in full."""
+        out: list[dict] = []
+        for start in range(0, len(pmids), 200):
+            chunk = pmids[start:start + 200]
+            params = {**self._base_params(), "id": ",".join(chunk)}
+            result = self.http.get_json(ESUMMARY_URL, params, validate=_has_result,
+                                        store=store)["result"]
+            for uid in result.get("uids", []):
+                r = result.get(uid, {})
+                year = str(r.get("sortpubdate") or r.get("pubdate") or "")[:4]
+                out.append({"pmid": uid, "title": str(r.get("title", "")).strip(),
+                            "year": int(year) if year.isdigit() else None,
+                            "publication_types": tuple(r.get("pubtype") or ())})
+        return out
+
+    def fetch_details(self, pmids: list[str], *, store: bool = True) -> list[Paper]:
         """Full records (incl. abstracts) for `pmids`, fetched via EFetch XML."""
         papers: list[Paper] = []
         for start in range(0, len(pmids), _FETCH_CHUNK):
@@ -234,7 +291,7 @@ class PubMedClient:
                 "retmode": "xml",
             }
             # EFetch is XML, not JSON — use the raw response and parse it.
-            resp = self.http.get(EFETCH_URL, params, validate=_is_pubmed_xml)
+            resp = self.http.get(EFETCH_URL, params, validate=_is_pubmed_xml, store=store)
             root = ET.fromstring(resp.text)
             for art in root.findall("./PubmedArticle"):
                 paper = _parse_article(art)

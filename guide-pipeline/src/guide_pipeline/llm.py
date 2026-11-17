@@ -70,7 +70,17 @@ class TaskConfig:
 DECISION_TASKS = frozenset({
     "candidate_generation", "topic_generation", "gap_candidates", "axis_lens",
     "final_check", "tie_break", "novelty_check",
+    # The update pipeline: Opus judges whether an update would repeat work
+    "overlap_judgement",
+    # ...and runs the two agentic filters (mining/agent.py, Samarth 2026-10-27)
+    "stage1_triage", "stage2_appraisal",
+    # ...and step 3's decision only update check (Samarth, 2026-10-27: Opus, medium)
+    "update_check",
 })
+# The fast model (ANTHROPIC_FAST_MODEL, Haiku 5.5). Samarth, 2026-10-27: basic PubMed
+# searching and retrieval in the update pipeline runs on Haiku, the guide on Sonnet.
+FAST_TASKS = frozenset({"quick_screening", "review_extraction", "strategy_translation",
+                        "search_revision", "topic_terms"})
 TASKS: dict[str, tuple[str, bool]] = {
     "concept_mapping": ("low", False),
     "candidate_generation": ("high", True),
@@ -98,14 +108,57 @@ TASKS: dict[str, tuple[str, bool]] = {
     "tie_break": ("max", True),
     # Grouping stated primary outcomes for the heterogeneity check.
     "outcome_grouping": ("low", False),
+    # The update pipeline (docs/spec-update-pipeline.md). Has a review already been
+    # updated, or would its update repeat work already done? Judged on meaning.
+    "overlap_judgement": ("high", True),
+    # Search date, search strategy, criteria and included studies, read out of a
+    # review's full text: grounded extraction, quotes checked by code.
+    "review_extraction": ("low", True),
+    # The review's own strategy translated faithfully into PubMed syntax.
+    "strategy_translation": ("medium", True),
+    # A strategy revised after the recall test missed some of the review's studies.
+    "search_revision": ("medium", True),
+    # Step 5 (Samarth, 2026-10-25): a quick include or exclude decision per paper
+    # from its title and abstract, against the original review's criteria.
+    "quick_screening": ("low", False),
+    # The agentic filters: long tool-using runs, see mining/agent.py
+    "stage1_triage": ("high", True),
+    "stage2_appraisal": ("high", True),
+    # Step 3: has this review already been updated? A decision, no rationale.
+    "update_check": ("medium", True),
+    # Step 2: short search terms from a topic written as prose.
+    "topic_terms": ("low", False),
 }
 _EFFORTS = ("low", "medium", "high", "xhigh", "max")
 # Reply budget (thinking included). Maximum effort judgements think for longer than
 # the default allows (seen live: the novelty check cut off at 16,000), so they get
 # more, and are streamed because a request that long must be.
 DEFAULT_MAX_TOKENS = 16000
-TASK_MAX_TOKENS = {"novelty_check": 64000, "tie_break": 64000}
+TASK_MAX_TOKENS = {"novelty_check": 64000, "tie_break": 64000,
+                   # up to 30 records judged in one reply, each with its reasoning
+                   "overlap_judgement": 32000,
+                   # a review's whole list of included studies can be long
+                   "review_extraction": 32000}
 _STREAM_ABOVE = 16000
+# A reply can be cut off part way through when the connection drops (seen live
+# 2026-10-27: "peer closed connection without sending complete message body").
+# The SDK retries only before a reply starts, so the whole call is sent again.
+CALL_RETRIES = 3
+RETRY_WAIT_SECONDS = 5.0
+
+
+def transport_errors() -> tuple[type[BaseException], ...]:
+    """Connection failures worth sending a call again for, from every HTTP layer."""
+    import anthropic
+
+    errors: list[type[BaseException]] = [anthropic.APIConnectionError, httpx.TransportError]
+    try:
+        import httpx2  # the anthropic SDK's own HTTP library (1.x)
+
+        errors.append(httpx2.TransportError)
+    except ImportError:
+        pass
+    return tuple(errors)
 
 
 def task_config(settings: Settings, task: str) -> TaskConfig:
@@ -115,6 +168,7 @@ def task_config(settings: Settings, task: str) -> TaskConfig:
     effort, thinking = TASKS[task]
     key = task.upper()
     default = (settings.anthropic_decision_model if task in DECISION_TASKS
+               else settings.anthropic_fast_model if task in FAST_TASKS
                else settings.anthropic_model)
     model = os.environ.get(f"MODEL_{key}") or default
     effort = os.environ.get(f"EFFORT_{key}") or effort
@@ -395,7 +449,9 @@ class AnthropicClient:
 
     def _params(self, call: JsonCall) -> dict[str, Any]:
         """Request parameters, identical for synchronous and batch requests."""
-        output_config: dict[str, Any] = {"effort": self.effort}
+        # Haiku takes no effort setting; the other models do.
+        output_config: dict[str, Any] = (
+            {} if self.model.startswith("claude-haiku") else {"effort": self.effort})
         if call.schema is not None:
             output_config["format"] = {"type": "json_schema", "schema": call.schema}
         system: Any = call.system
@@ -439,16 +495,22 @@ class AnthropicClient:
             # recommended fallback model for that refusal category.
             params["extra_headers"] = {"anthropic-beta": "server-side-fallback-2026-07-01"}
             params["extra_body"] = {"fallbacks": "default"}
-        try:
-            if self.max_tokens > _STREAM_ABOVE:
-                with self._sdk().messages.stream(**params) as stream:
-                    response = stream.get_final_message()
-            else:
-                response = self._sdk().messages.create(**params)
-        except anthropic.APIConnectionError as exc:
-            raise LLMError(f"Anthropic unreachable: {exc}") from exc
-        except anthropic.APIStatusError as exc:
-            raise LLMError(f"Anthropic HTTP {exc.status_code}: {exc.message}") from exc
+        retry_on = transport_errors()
+        for attempt in range(CALL_RETRIES + 1):
+            try:
+                if self.max_tokens > _STREAM_ABOVE:
+                    with self._sdk().messages.stream(**params) as stream:
+                        response = stream.get_final_message()
+                else:
+                    response = self._sdk().messages.create(**params)
+                break
+            except anthropic.APIStatusError as exc:
+                raise LLMError(f"Anthropic HTTP {exc.status_code}: {exc.message}") from exc
+            except retry_on as exc:
+                if attempt == CALL_RETRIES:
+                    raise LLMError(f"Anthropic unreachable after {attempt + 1} tries: "
+                                   f"{exc}") from exc
+                self.sleep(RETRY_WAIT_SECONDS * 2 ** attempt)
         return self._read(response)
 
     def complete_json_many(self, calls: list[JsonCall]) -> list[dict[str, Any] | LLMError]:

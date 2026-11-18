@@ -174,8 +174,8 @@ export default async function GuideCheckoutPage({
             <p className="mt-2">
               <strong className="text-foreground">What you&apos;re buying:</strong>{" "}
               a bespoke research guide, individually prepared and verified,
-              delivered as downloadable files (PDF, editable DOCX, and an XLSX
-              extraction template) within 7 working days of payment.
+              delivered as downloadable Word and Excel files within 7 working
+              days of payment.
             </p>
             <p className="mt-2">
               <strong className="text-foreground">Cancellation:</strong> you

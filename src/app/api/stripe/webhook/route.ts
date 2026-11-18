@@ -21,6 +21,9 @@ type CheckoutSessionEvent = {
       payment_status?: string;
       payment_intent?: string | null;
       amount_total?: number | null;
+      // Set when the buyer paid in another currency (Adaptive Pricing): the
+      // amounts here are in our own currency (GBP).
+      currency_conversion?: { amount_total?: number | null; source_currency?: string } | null;
       customer_details?: { address?: { country?: string | null } | null } | null;
       metadata?: { order_id?: string } | null;
     };
@@ -40,17 +43,23 @@ export async function POST(request: Request) {
   }
 
   const event = JSON.parse(payload) as CheckoutSessionEvent;
-  if (event.type !== "checkout.session.completed") {
+  // Card payments are paid when the session completes. Delayed methods (a UK
+  // bank payment, for example) complete unpaid and are paid later, in
+  // async_payment_succeeded; both go through the same idempotent update.
+  if (
+    event.type !== "checkout.session.completed" &&
+    event.type !== "checkout.session.async_payment_succeeded"
+  ) {
     return NextResponse.json({ received: true });
   }
 
   const session = event.data.object;
   if (session.payment_status && session.payment_status !== "paid") {
-    // Async payment methods would arrive later; card payments are 'paid' here.
     return NextResponse.json({ received: true });
   }
 
   const orderId = session.metadata?.order_id ?? null;
+  const amountPence = session.currency_conversion?.amount_total ?? session.amount_total ?? null;
   const billingCountry = session.customer_details?.address?.country ?? null;
   const paymentIntentId =
     typeof session.payment_intent === "string" ? session.payment_intent : null;
@@ -67,7 +76,7 @@ export async function POST(request: Request) {
     .set({
       status: "paid",
       paidAt: new Date(),
-      pricePaidPence: session.amount_total ?? null,
+      pricePaidPence: amountPence,
       stripePaymentIntentId: paymentIntentId,
       billingCountry,
       cardCountry,
